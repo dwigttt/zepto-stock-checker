@@ -90,6 +90,40 @@ body `{"query","pageNumber":0,"mode":"AUTOSUGGEST","userSessionId":""}` → widg
 - App shares: Branch.io links → follow redirects, then regex `/pvid/{uuid}` from
   the final URL (fallback: regex the body).
 
+## Anonymous vs logged-in sessions (verified 2026-06-12)
+
+Catalog reads work without login, but Zepto personalises what logged-in users
+see. Confirmed differences:
+
+- **The public API under-reports discounts.** The price gap is real and
+  reproducible: for the same product, same store, same anonymous session, the
+  public `product-detail` API returned `discountedSellingPrice: 4000`
+  (no discount, `discountPercent: 0`) while zepto.com's own logged-out SSR
+  product page rendered `discountedSellingPrice: 3800` (`discountPercent: 5`).
+  The SSR page is a *fresh* render (`x-cache: Miss from cloudfront`,
+  `max-age=0`), not stale caching — Zepto's server applies campaign pricing in
+  a context the public anonymous API doesn't expose. **No anonymous request
+  shaping reproduces the lower price** — tested handshake cookies, dropping
+  `x-without-bearer`, `platform: APP`, and `user_position`; all return the
+  undiscounted price. So our number is Zepto's *guest/list* price; the real
+  checkout price (campaign + Pass) is often lower (user report: ₹93 vs ₹99).
+  Getting it would require Zepto login (bearer token) or scraping the SSR PDP
+  per product (home-store only, expensive). Anonymously,
+  `discountedSellingPrice == superSaverSellingPrice` always, and
+  `valueBasedDiscount` is `{}` — not a parsing bug, just the public tier.
+- **Search is stubbed for anonymous API calls.**
+  `user-search-service/api/v3/search` returns HTTP 200 with zero products —
+  only an `UPDATE_APP_VERSION_ANDROID` banner widget. Harmless here (the app
+  never searches), but don't build features on it without auth.
+- **Availability may differ when logged in** (user report: item available in
+  their logged-in app while this tool said out of stock — unconfirmed).
+  product-detail *availability* matches the logged-out website exactly, so any
+  stock gap is login personalisation or a different dark store (their saved
+  address vs the searched pin), not a parsing bug. Use
+  `scripts/compare_stock.py <link|pvid> <pincode|"lat,lng"> [--radius N]` to
+  triage such reports — it cross-checks our API against zepto.com's own SSR
+  page and tells you whether a mismatch is ours or expected personalisation.
+
 ## Anti-bot posture
 
 AWS CloudFront only; no Cloudflare/JS challenge. Keep volume low: cache stores,
