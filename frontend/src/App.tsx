@@ -526,7 +526,9 @@ export function App() {
                         />
                       )}
                       <ItemContent>
-                        <ItemTitle>{product.name}</ItemTitle>
+                        <ItemTitle>
+                          <span className="line-clamp-2">{product.name}</span>
+                        </ItemTitle>
                         {product.brand && (
                           <ItemDescription>{product.brand}</ItemDescription>
                         )}
@@ -841,11 +843,16 @@ export function App() {
                     />
                   )}
                   <ItemContent>
-                    <ItemTitle>{product?.name}</ItemTitle>
-                    <ItemDescription>
-                      {STATUS_LABEL[detail.status]}
-                      {detail.store.id === cheapestId && " · cheapest nearby"}
-                    </ItemDescription>
+                    <ItemTitle>
+                      <span className="line-clamp-2">{product?.name}</span>
+                    </ItemTitle>
+                    {detail.status === "in_stock" && (
+                      <ItemDescription>
+                        {STATUS_LABEL[detail.status]}
+                        {detail.store.id === cheapestId &&
+                          " · cheapest nearby"}
+                      </ItemDescription>
+                    )}
                   </ItemContent>
                   <ItemActions className="flex-col items-end gap-0">
                     {detail.status === "in_stock" && detail.price != null ? (
