@@ -102,8 +102,9 @@ Single Docker container deployed via Dokploy on the user's Oracle VPS.
 2. **Resolve location** — pincode → lat/lng via Zepto's maps endpoints, or
    browser GPS coordinates directly.
 3. **Check home location first** — resolve the user's primary store, check the
-   product there. If in stock, report success immediately (nearby search still
-   available on demand).
+   product there. If in stock, report success and stop — the radius sweep does
+   not run automatically; the UI offers a "search nearby anyway" button that
+   starts it explicitly. If unavailable, the sweep starts immediately.
 4. **Discover stores in radius** — load cached stores within the radius
    (haversine distance on store coordinates). For circle areas not covered by
    cached store geofences or fresh `probed_points`, generate a hex grid of probe
