@@ -23,6 +23,7 @@ async def run_search(
     lat: float,
     lng: float,
     radius_km: float,
+    force: bool = False,
 ) -> AsyncIterator[dict]:
     queue: asyncio.Queue[dict | None] = asyncio.Queue()
     checked: set[str] = set()
@@ -89,12 +90,17 @@ async def run_search(
                 {
                     "type": "home_result",
                     "serviceable": home.serviceable,
-                    "store_name": home.store_name,
                     "city": home.city,
+                    "store_name": home.store_name,
                     "eta_minutes": home.eta_minutes,
                     "product": asdict(home_product) if home_product else None,
                 }
             )
+
+            # Available right here — no need to sweep unless explicitly asked.
+            if home_product and home_product.status == "in_stock" and not force:
+                await emit({"type": "done", "summary": dict(counts)})
+                return
 
             # 2. Stock checks for already-known stores start immediately...
             # (one grid cell of margin: a store just outside still serves the rim)

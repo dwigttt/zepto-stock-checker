@@ -5,3 +5,4 @@ backend/data/
 node_modules/
 dist/
 .env
+backend/static/

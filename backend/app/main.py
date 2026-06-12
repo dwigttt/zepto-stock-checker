@@ -91,9 +91,10 @@ async def search(
     lat: float = Query(ge=-90, le=90),
     lng: float = Query(ge=-180, le=180),
     radius_km: float = Query(default=10, ge=1, le=config.MAX_RADIUS_KM),
+    force: bool = Query(default=False),
 ):
     async def stream():
-        async for event in run_search(app.state.zepto, app.state.cache, pvid, lat, lng, radius_km):
+        async for event in run_search(app.state.zepto, app.state.cache, pvid, lat, lng, radius_km, force):
             yield f"data: {json.dumps(event)}\n\n"
 
     return StreamingResponse(
