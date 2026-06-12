@@ -41,6 +41,27 @@ def test_bucket_never_exceeds_capacity():
     assert bucket.take() is False
 
 
+def test_bucket_take_up_to_grants_whole_tokens_available():
+    clock = FakeClock()
+    bucket = TokenBucket(capacity=3, refill_per_sec=0.0, clock=clock)
+    assert bucket.take_up_to(10) == 3  # only 3 available
+    assert bucket.take_up_to(10) == 0  # now empty
+
+
+def test_bucket_take_up_to_grants_exact_when_under_capacity():
+    clock = FakeClock()
+    bucket = TokenBucket(capacity=100, refill_per_sec=0.0, clock=clock)
+    assert bucket.take_up_to(7) == 7
+    assert bucket.take_up_to(7) == 7  # still plenty left
+
+
+def test_bucket_take_up_to_zero_is_noop():
+    clock = FakeClock()
+    bucket = TokenBucket(capacity=5, refill_per_sec=0.0, clock=clock)
+    assert bucket.take_up_to(0) == 0
+    assert bucket.take_up_to(5) == 5  # nothing was consumed by the zero call
+
+
 def test_limiter_separates_clients():
     clock = FakeClock()
     limiter = RateLimiter(

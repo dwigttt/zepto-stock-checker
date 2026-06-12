@@ -39,7 +39,7 @@ interface ResultsMapProps {
   radiusKm: number
   results: StoreResult[]
   selectedId: string | null
-  onSelect: (id: string) => void
+  onSelect: (result: StoreResult) => void
   className?: string
 }
 
@@ -80,7 +80,7 @@ export function ResultsMap({ lat, lng, radiusKm, results, selectedId, onSelect, 
             fillColor: STATUS_COLORS[r.status],
             fillOpacity: 0.95,
           }}
-          eventHandlers={{ click: () => onSelect(r.store.id) }}
+          eventHandlers={{ click: () => onSelect(r) }}
         >
           <Popup>
             <span className="font-medium">{r.store.name ?? "Store"}</span>

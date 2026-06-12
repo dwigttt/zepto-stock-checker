@@ -12,7 +12,7 @@ from pydantic import BaseModel
 
 from . import config
 from .links import extract_pvid, first_url, looks_like_zepto
-from .ratelimit import ConcurrencyGate, RateLimiter
+from .ratelimit import ConcurrencyGate, RateLimiter, TokenBucket
 from .search import run_search
 from .store_cache import StoreCache
 from .zepto import SAMPLE_STORE_ID, ZeptoClient, ZeptoError
@@ -31,6 +31,14 @@ async def lifespan(app: FastAPI):
         search_refill_per_sec=config.SEARCHES_PER_DAY / 86_400,
     )
     app.state.search_gate = ConcurrencyGate(config.MAX_CONCURRENT_SEARCHES)
+    # Whole-instance daily backstops, the main levers on total upstream/proxy
+    # traffic: a coarse search cap and a fine-grained probe (bandwidth) budget.
+    app.state.global_searches = TokenBucket(
+        config.GLOBAL_SEARCH_BURST, config.GLOBAL_SEARCHES_PER_DAY / 86_400
+    )
+    app.state.probe_budget = TokenBucket(
+        config.PROBE_BURST, config.PROBES_PER_DAY / 86_400
+    )
     yield
     await app.state.zepto.aclose()
     app.state.cache.close()
@@ -188,18 +196,22 @@ async def search(
     state = request.app.state
     if not auth_ok(request):
         return _sse_error("Access token missing or invalid.")
-    # Check the cheap concurrency gate before spending the client's search
-    # budget, so a "server busy" rejection doesn't cost them a search.
+    # Check the cheap concurrency gate before spending any budget, so a "server
+    # busy" rejection doesn't cost a search token.
     if not state.search_gate.try_acquire():
         return _sse_error("The server is busy with other searches right now — try again shortly.")
     if not state.limiter.allow_search(client_ip(request)):
         state.search_gate.release()
-        return _sse_error("You've reached the search limit for now. Try again later.")
+        return _sse_error("You've reached your search limit for now. Try again later.")
+    if not state.global_searches.take():
+        state.search_gate.release()
+        return _sse_error("The app has hit today's overall search limit. Try again later.")
 
     async def stream():
         try:
             async for event in run_search(
-                state.zepto, state.cache, pvid, lat, lng, radius_km, force
+                state.zepto, state.cache, pvid, lat, lng, radius_km, force,
+                probe_budget=state.probe_budget,
             ):
                 yield f"data: {json.dumps(event)}\n\n"
         finally:

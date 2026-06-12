@@ -61,10 +61,14 @@ Environment variables:
 | `ZEPTO_CONCURRENCY`       | `5`              | Max parallel requests to Zepto                                                       |
 | `DATABASE_PATH`           | `/data/zepto.db` | SQLite location                                                                      |
 | `APP_TOKEN`               | _(none)_         | Shared access token. Unset = open; set it to gate all `/api` access (see below)      |
-| `MAX_RADIUS_KM`           | `25`             | Largest search radius the server will accept                                         |
+| `MAX_RADIUS_KM`           | `15`             | Largest search radius accepted. Cold-sweep cost grows with area (~radius²), so this is a big bandwidth lever: 25km ≈ 253 probes, 15km ≈ 91, 10km ≈ 37 |
 | `MAX_CONCURRENT_SEARCHES` | `3`              | Hard cap on simultaneous sweeps across all users — bounds the request rate Zepto sees |
-| `SEARCHES_PER_DAY`        | `100`            | Per-client (per-IP) daily search budget                                              |
-| `SEARCH_BURST`            | `5`              | Per-client search burst allowance before the daily refill paces them                 |
+| `PROBES_PER_DAY`          | `3000`           | **Whole-instance daily probe budget — the main knob for proxy cost.** Probing is the bulk of upstream traffic; a search past the budget still returns cached + partial results |
+| `PROBE_BURST`             | `400`            | Probe budget burst (sized to allow a couple of full cold sweeps back-to-back)        |
+| `GLOBAL_SEARCHES_PER_DAY` | `500`            | Whole-instance daily search cap (across everyone) — coarse backstop if a token leaks |
+| `GLOBAL_SEARCH_BURST`     | `20`             | Global search burst allowance                                                        |
+| `SEARCHES_PER_DAY`        | `30`             | Per-client (per-IP) daily search budget                                              |
+| `SEARCH_BURST`            | `3`              | Per-client search burst allowance before the daily refill paces them                 |
 | `REQUESTS_PER_MIN`        | `60`             | Per-client budget for the lighter endpoints (geocode/suggest/resolve)               |
 | `REQUEST_BURST`           | `30`             | Per-client request burst allowance                                                   |
 | `TRUST_FORWARDED_FOR`     | `true`           | Read the client IP from `X-Forwarded-For` (correct behind Dokploy/Traefik; turn off if the app is directly exposed, since the header is forgeable) |
@@ -84,10 +88,22 @@ Turn on the built-in abuse controls before exposing one instance to a group:
    request (as a header, and as a query param on the search stream — `EventSource`
    can't send headers). Visitors without the token get a prompt to paste one.
 
-With `APP_TOKEN` set, the per-IP search budget and the global concurrency cap
-keep total upstream traffic bounded even if the link leaks. Tune the limits via
-the variables above. The shared SQLite cache helps a lot here: if the group is
-mostly in one or two cities, only the first search in each area is expensive.
+With `APP_TOKEN` set, the per-IP and global search budgets plus the concurrency
+cap keep total upstream traffic bounded even if the link leaks. The shared SQLite
+cache helps a lot here: if the group is mostly in one or two cities, only the
+first search in each area is expensive.
+
+**Controlling proxy cost.** Residential proxies bill per GB, and the cold
+discovery sweep is what spends it — a fresh 15km sweep is ~91 probes (~0.3 MB),
+a 25km one ~253 (~0.75 MB), one-time per area then cached. The knobs, in order of
+impact:
+
+- **`PROBES_PER_DAY`** — a hard daily ceiling on total probing across everyone.
+  At ~3 KB/probe, `3000` ≈ ~9 MB/day of probe traffic. Lower it to spend less;
+  searches past it still work off the cache and say so in the UI.
+- **`MAX_RADIUS_KM`** — smaller radius shrinks every cold sweep quadratically.
+- **`GLOBAL_SEARCHES_PER_DAY` / `SEARCHES_PER_DAY`** — cap how many searches (and
+  thus per-store stock checks, ~10–30 KB each) run per day, globally and per user.
 
 > Alternatively, skip hosting and just share the repo — each person runs their
 > own copy (the Docker setup makes this a one-liner), so traffic spreads across

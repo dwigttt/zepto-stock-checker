@@ -10,6 +10,7 @@ from typing import AsyncIterator
 
 from .config import GRID_SPACING_KM, PROBE_COVERAGE_KM
 from .grid import haversine_km, hex_grid
+from .ratelimit import TokenBucket
 from .store_cache import Store, StoreCache
 from .zepto import ZeptoClient, ZeptoError
 
@@ -24,6 +25,7 @@ async def run_search(
     lng: float,
     radius_km: float,
     force: bool = False,
+    probe_budget: TokenBucket | None = None,
 ) -> AsyncIterator[dict]:
     queue: asyncio.Queue[dict | None] = asyncio.Queue()
     checked: set[str] = set()
@@ -108,11 +110,21 @@ async def run_search(
                 start_check(store)
 
             # 3. ...while undiscovered parts of the circle are swept in parallel.
-            to_probe = [
+            undiscovered = [
                 p
                 for p in hex_grid(lat, lng, radius_km, GRID_SPACING_KM)
                 if not cache.has_fresh_probe_near(p[0], p[1], PROBE_COVERAGE_KM)
             ]
+            # Probing is the bulk of upstream (and proxy) traffic. A global daily
+            # probe budget caps it: when short, map as much as the budget allows
+            # and tell the user the rest was skipped rather than silently capping.
+            if probe_budget is not None:
+                granted = probe_budget.take_up_to(len(undiscovered))
+            else:
+                granted = len(undiscovered)
+            to_probe = undiscovered[:granted]
+            budget_limited = granted < len(undiscovered)
+
             progress = {"probed": 0, "failed": 0, "total": len(to_probe)}
             await emit(
                 {
@@ -121,6 +133,14 @@ async def run_search(
                     "cached_stores": counts["stores"],
                 }
             )
+            if budget_limited:
+                log.warning("probe budget limited sweep: %d/%d points", granted, len(undiscovered))
+                await emit(
+                    {
+                        "type": "notice",
+                        "message": "Daily store-mapping limit reached — some far stores may be missing. Try again later.",
+                    }
+                )
             if to_probe:
                 await asyncio.gather(*(probe_point(p[0], p[1], progress) for p in to_probe))
 

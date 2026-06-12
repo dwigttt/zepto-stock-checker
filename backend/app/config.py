@@ -24,16 +24,26 @@ TRUST_FORWARDED_FOR = _flag("TRUST_FORWARDED_FOR", True)
 REQUEST_BURST = int(os.environ.get("REQUEST_BURST", "30"))
 REQUESTS_PER_MIN = int(os.environ.get("REQUESTS_PER_MIN", "60"))
 # Per-client search budget — searches are the expensive sweep, so this is the
-# main IP-protecting knob. Burst, then a slow daily refill.
-SEARCH_BURST = int(os.environ.get("SEARCH_BURST", "5"))
-SEARCHES_PER_DAY = int(os.environ.get("SEARCHES_PER_DAY", "100"))
+# main per-user knob. Burst, then a slow daily refill.
+SEARCH_BURST = int(os.environ.get("SEARCH_BURST", "3"))
+SEARCHES_PER_DAY = int(os.environ.get("SEARCHES_PER_DAY", "30"))
 # Hard cap on simultaneous sweeps across all clients — bounds the request rate
 # Zepto sees regardless of how many people search at once.
 MAX_CONCURRENT_SEARCHES = int(os.environ.get("MAX_CONCURRENT_SEARCHES", "3"))
+# Whole-instance daily search cap (across everyone). A coarse backstop on top of
+# the per-client budget so a leaked token can't run up unlimited searches.
+GLOBAL_SEARCH_BURST = int(os.environ.get("GLOBAL_SEARCH_BURST", "20"))
+GLOBAL_SEARCHES_PER_DAY = int(os.environ.get("GLOBAL_SEARCHES_PER_DAY", "500"))
+# Whole-instance daily PROBE budget. Probing dominates upstream/proxy bandwidth
+# (a cold sweep is dozens-to-hundreds of requests), so this is the main knob for
+# capping proxy cost. A search past the budget still returns cached + partial
+# results. Burst is sized to allow a couple of full cold sweeps at once.
+PROBE_BURST = int(os.environ.get("PROBE_BURST", "400"))
+PROBES_PER_DAY = int(os.environ.get("PROBES_PER_DAY", "3000"))
 
-# Public radius ceiling. A 50km cold sweep is hundreds of probes; keep it lower
-# on a shared instance. Self-host can raise it back via env.
-MAX_RADIUS_KM = float(os.environ.get("MAX_RADIUS_KM", "25"))
+# Public radius ceiling. Cold-sweep cost grows with area (~radius²): 25km ≈ 253
+# probes, 15km ≈ 91, 10km ≈ 37. Lower = much cheaper sweeps. Self-host can raise.
+MAX_RADIUS_KM = float(os.environ.get("MAX_RADIUS_KM", "15"))
 # Dark stores cover ~3km; probe points spaced wider than that may miss stores,
 # tighter wastes requests.
 GRID_SPACING_KM = 3.0

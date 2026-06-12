@@ -2,7 +2,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app import config, main
-from app.ratelimit import RateLimiter
+from app.ratelimit import RateLimiter, TokenBucket
 
 VALID_PVID = "0059ff6a-7eb0-477a-a7f5-69256f2c444b"
 
@@ -58,10 +58,18 @@ def test_search_budget_exhausted_emits_sse_error(client, monkeypatch):
     client.app.state.limiter = RateLimiter(
         request_capacity=10,
         request_refill_per_sec=0.0,
-        search_capacity=0,  # no search budget at all
+        search_capacity=0,  # no per-client search budget at all
         search_refill_per_sec=0.0,
     )
     r = client.get(f"/api/search?pvid={VALID_PVID}&lat=12.97&lng=77.59&radius_km=5")
     assert r.status_code == 200  # SSE channel opens, then reports the error
     assert '"type": "error"' in r.text
     assert "limit" in r.text.lower()
+
+
+def test_global_search_cap_exhausted_emits_sse_error(client):
+    # Per-client budget is healthy, but the whole-instance daily cap is spent.
+    client.app.state.global_searches = TokenBucket(capacity=0, refill_per_sec=0.0)
+    r = client.get(f"/api/search?pvid={VALID_PVID}&lat=12.97&lng=77.59&radius_km=5")
+    assert r.status_code == 200
+    assert '"type": "error"' in r.text

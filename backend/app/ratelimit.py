@@ -23,14 +23,27 @@ class TokenBucket:
         self._tokens = float(capacity)
         self._updated = clock()
 
-    def take(self, cost: float = 1.0) -> bool:
+    def _refill_now(self) -> None:
         now = self._clock()
         self._tokens = min(self._capacity, self._tokens + (now - self._updated) * self._refill)
         self._updated = now
+
+    def take(self, cost: float = 1.0) -> bool:
+        self._refill_now()
         if self._tokens >= cost:
             self._tokens -= cost
             return True
         return False
+
+    def take_up_to(self, n: int) -> int:
+        """Consume and return as many whole tokens as are available, up to n.
+        For batch work (e.g. a sweep of n probes) that can proceed partially."""
+        if n <= 0:
+            return 0
+        self._refill_now()
+        granted = min(n, int(self._tokens))
+        self._tokens -= granted
+        return granted
 
     @property
     def full(self) -> bool:

@@ -2,16 +2,26 @@ import { useEffect, useMemo, useRef, useState } from "react"
 
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
+  Alert01Icon,
   CancelCircleIcon,
   CheckmarkCircle02Icon,
   LocationOffline01Icon,
   LockKeyIcon,
+  MapPinIcon,
   PackageRemoveIcon,
   Refresh01Icon,
   Search01Icon,
 } from "@hugeicons/core-free-icons"
+import { toast } from "sonner"
 
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -21,7 +31,17 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import {
+  Drawer,
+  DrawerClose,
+  DrawerContent,
+  DrawerDescription,
+  DrawerFooter,
+  DrawerHeader,
+  DrawerTitle,
+} from "@/components/ui/drawer"
+import {
   Empty,
+  EmptyContent,
   EmptyDescription,
   EmptyHeader,
   EmptyMedia,
@@ -39,14 +59,26 @@ import {
   InputGroupButton,
   InputGroupInput,
 } from "@/components/ui/input-group"
+import {
+  Item,
+  ItemActions,
+  ItemContent,
+  ItemDescription,
+  ItemTitle,
+} from "@/components/ui/item"
 import { Progress } from "@/components/ui/progress"
 import { Separator } from "@/components/ui/separator"
 import { Slider } from "@/components/ui/slider"
+import { Toaster } from "@/components/ui/sonner"
 import { Spinner } from "@/components/ui/spinner"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { LocationSearch } from "@/components/location-search"
 import {
   ResultsList,
+  ResultsSkeleton,
+  STATUS_LABEL,
+  STATUS_VARIANT,
   formatPrice,
   prettyStoreName,
 } from "@/components/results-list"
@@ -60,6 +92,7 @@ import {
   type AppConfig,
   type GeocodeResponse,
   type ResolveResponse,
+  type StoreResult,
 } from "@/lib/api"
 
 interface RecentProduct {
@@ -97,7 +130,7 @@ const RADIUS_PRESETS = [5, 10, 25, 50]
 
 function StepBadge({ n, done }: { n: number; done?: boolean }) {
   return (
-    <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium tabular-nums text-muted-foreground">
+    <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium text-muted-foreground tabular-nums">
       {done ? (
         <HugeiconsIcon icon={CheckmarkCircle02Icon} className="text-primary" />
       ) : (
@@ -126,6 +159,8 @@ export function App() {
 
   const [onlyInStock, setOnlyInStock] = useState(false)
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [detail, setDetail] = useState<StoreResult | null>(null)
+  const [view, setView] = useState<"map" | "list">("map")
   const [lastRunKey, setLastRunKey] = useState<string | null>(null)
 
   const [appConfig, setAppConfig] = useState<AppConfig | null>(null)
@@ -221,19 +256,24 @@ export function App() {
       ? `${resolved.pvid}|${coords.lat.toFixed(4)},${coords.lng.toFixed(4)}|${radiusKm}`
       : null
 
-  function runSearch(force: boolean) {
-    if (!resolved || !coords || !searchKey) return
-    setLastRunKey(searchKey)
+  function startSearch(km: number, force: boolean) {
+    if (!resolved || !coords) return
+    setLastRunKey(
+      `${resolved.pvid}|${coords.lat.toFixed(4)},${coords.lng.toFixed(4)}|${km}`
+    )
     setSelectedId(null)
+    setDetail(null)
     setOnlyInStock(false)
     start({
       pvid: resolved.pvid,
       lat: coords.lat,
       lng: coords.lng,
-      radiusKm,
+      radiusKm: km,
       force,
     })
   }
+
+  const runSearch = (force: boolean) => startSearch(radiusKm, force)
 
   // Kick off the first search automatically once product + location are known.
   useEffect(() => {
@@ -282,15 +322,57 @@ export function App() {
     lastRunKey !== null && searchKey !== null && searchKey !== lastRunKey
   const showResults =
     coords && (searching || state.phase === "done") && !homeOnlySearch
+  const pendingRows = searching
+    ? Math.max(
+        0,
+        Math.min(
+          state.totalStores > 0 ? state.totalStores - state.results.length : 3,
+          6
+        )
+      )
+    : 0
+  const nextRadius = RADIUS_PRESETS.find(
+    (km) => km > radiusKm && km <= maxRadius
+  )
 
-  function handleSelect(id: string) {
-    setSelectedId(id)
-    document
-      .getElementById(`store-${id}`)
-      ?.scrollIntoView({ behavior: "smooth", block: "nearest" })
+  // Result toasts on phase transitions (cancelled searches end without a
+  // summary, so they stay quiet).
+  const prevPhase = useRef(state.phase)
+  useEffect(() => {
+    if (prevPhase.current === state.phase) return
+    prevPhase.current = state.phase
+    if (state.phase === "done" && state.summary) {
+      if (state.summary.in_stock > 0) {
+        toast.success(
+          `In stock at ${state.summary.in_stock} ${
+            state.summary.in_stock === 1 ? "store" : "stores"
+          } nearby`
+        )
+      } else if (homeInStock) {
+        toast.success("It's in stock at your own store")
+      } else if (state.summary.stores > 0) {
+        toast(
+          `Sold out at all ${state.summary.stores} stores within ${radiusKm} km`
+        )
+      }
+    } else if (state.phase === "error" && state.error) {
+      toast.error(state.error)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.phase])
+
+  function handleSelect(result: StoreResult) {
+    setSelectedId(result.store.id)
+    setDetail(result)
+  }
+
+  function showOnMap() {
+    setView("map")
+    setDetail(null)
   }
 
   const product = resolved?.product
+  const homePrice = state.home?.product?.price ?? null
 
   const statusText = probing
     ? "Mapping Zepto stores in this area…"
@@ -359,8 +441,8 @@ export function App() {
                 </CardTitle>
                 {!resolved && (
                   <CardDescription>
-                    Share any product from the Zepto app and paste the link —
-                    it loads automatically.
+                    Share any product from the Zepto app and paste the link — it
+                    loads automatically.
                   </CardDescription>
                 )}
               </CardHeader>
@@ -432,7 +514,10 @@ export function App() {
                 {product && (
                   <>
                     <Separator />
-                    <div className="flex items-center gap-4 animate-in fade-in-0 slide-in-from-bottom-1">
+                    <Item
+                      size="sm"
+                      className="px-0 animate-in fade-in-0 slide-in-from-bottom-1"
+                    >
                       {product.image_url && (
                         <img
                           src={product.image_url}
@@ -440,16 +525,14 @@ export function App() {
                           className="size-16 shrink-0 rounded-lg border object-cover"
                         />
                       )}
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate font-medium">{product.name}</p>
+                      <ItemContent>
+                        <ItemTitle>{product.name}</ItemTitle>
                         {product.brand && (
-                          <p className="text-sm text-muted-foreground">
-                            {product.brand}
-                          </p>
+                          <ItemDescription>{product.brand}</ItemDescription>
                         )}
-                      </div>
+                      </ItemContent>
                       {product.price != null && (
-                        <div className="flex shrink-0 flex-col items-end">
+                        <ItemActions className="flex-col items-end gap-0">
                           <span className="font-semibold tabular-nums">
                             ₹{formatPrice(product.price)}
                           </span>
@@ -459,9 +542,9 @@ export function App() {
                                 ₹{formatPrice(product.mrp)}
                               </s>
                             )}
-                        </div>
+                        </ItemActions>
                       )}
-                    </div>
+                    </Item>
                   </>
                 )}
               </CardContent>
@@ -528,6 +611,14 @@ export function App() {
               </Alert>
             )}
 
+            {state.notice && (
+              <Alert className="animate-in fade-in-0">
+                <HugeiconsIcon icon={Alert01Icon} />
+                <AlertTitle>Heads up</AlertTitle>
+                <AlertDescription>{state.notice}</AlertDescription>
+              </Alert>
+            )}
+
             {state.home && (
               <Alert className="animate-in fade-in-0 slide-in-from-bottom-1">
                 <HugeiconsIcon
@@ -570,19 +661,25 @@ export function App() {
               </Button>
             )}
 
-            {/* Results — map + list as one block */}
+            {/* Results — map / list tabs */}
             {showResults && (
-              <section className="flex flex-col gap-3">
+              <Tabs
+                value={view}
+                onValueChange={(v) => setView(v as "map" | "list")}
+                className="gap-3"
+              >
                 <div className="flex items-center justify-between gap-2">
-                  <p className="text-sm font-medium">
-                    Nearby stores
-                    {sortedResults.length > 0 && (
-                      <span className="font-normal text-muted-foreground">
-                        {" "}
-                        · in stock at {inStock.length} of {sortedResults.length}
-                      </span>
-                    )}
-                  </p>
+                  <TabsList>
+                    <TabsTrigger value="map">Map</TabsTrigger>
+                    <TabsTrigger value="list">
+                      List
+                      {sortedResults.length > 0 && (
+                        <Badge variant="secondary">
+                          {visibleResults.length}
+                        </Badge>
+                      )}
+                    </TabsTrigger>
+                  </TabsList>
                   {sortedResults.length > 0 && (
                     <ToggleGroup
                       type="single"
@@ -598,33 +695,53 @@ export function App() {
                     </ToggleGroup>
                   )}
                 </div>
-                <div className="overflow-hidden rounded-xl border bg-card">
-                  <ResultsMap
-                    lat={coords.lat}
-                    lng={coords.lng}
-                    radiusKm={radiusKm}
-                    results={visibleResults}
-                    selectedId={selectedId}
-                    onSelect={handleSelect}
-                  />
-                  {visibleResults.length > 0 && (
+                <p className="text-sm text-muted-foreground">
+                  {sortedResults.length > 0 ? (
                     <>
-                      <Separator />
+                      In stock at{" "}
+                      <span className="font-medium text-foreground">
+                        {inStock.length}
+                      </span>{" "}
+                      of {sortedResults.length} stores
+                      {searching && " — still checking…"}
+                    </>
+                  ) : (
+                    statusText
+                  )}
+                </p>
+                <TabsContent value="map">
+                  <div className="overflow-hidden rounded-xl border bg-card">
+                    <ResultsMap
+                      lat={coords.lat}
+                      lng={coords.lng}
+                      radiusKm={radiusKm}
+                      results={visibleResults}
+                      selectedId={selectedId}
+                      onSelect={handleSelect}
+                    />
+                  </div>
+                </TabsContent>
+                <TabsContent value="list">
+                  <div className="overflow-hidden rounded-xl border bg-card">
+                    {visibleResults.length > 0 && (
                       <ResultsList
                         results={visibleResults}
                         selectedId={selectedId}
                         cheapestId={cheapestId}
                         onSelect={handleSelect}
                       />
-                    </>
-                  )}
-                  {sortedResults.length > 0 && visibleResults.length === 0 && (
-                    <p className="px-4 py-3 text-sm text-muted-foreground">
-                      No stores match the filter.
-                    </p>
-                  )}
-                </div>
-              </section>
+                    )}
+                    {pendingRows > 0 && <ResultsSkeleton rows={pendingRows} />}
+                    {!searching &&
+                      sortedResults.length > 0 &&
+                      visibleResults.length === 0 && (
+                        <p className="px-4 py-3 text-sm text-muted-foreground">
+                          No stores match the filter.
+                        </p>
+                      )}
+                  </div>
+                </TabsContent>
+              </Tabs>
             )}
 
             {state.phase === "done" &&
@@ -639,15 +756,150 @@ export function App() {
                     <EmptyTitle>Not available nearby</EmptyTitle>
                     <EmptyDescription>
                       None of the {state.summary.stores} stores within{" "}
-                      {radiusKm} km have this in stock right now. Try a bigger
-                      radius.
+                      {radiusKm} km have this in stock right now.
                     </EmptyDescription>
                   </EmptyHeader>
+                  {nextRadius && (
+                    <EmptyContent>
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          setRadius(nextRadius)
+                          startSearch(nextRadius, false)
+                        }}
+                      >
+                        <HugeiconsIcon
+                          icon={Search01Icon}
+                          data-icon="inline-start"
+                        />
+                        Widen to {nextRadius} km and search again
+                      </Button>
+                    </EmptyContent>
+                  )}
                 </Empty>
               )}
+
+            <Accordion type="single" collapsible className="mt-auto">
+              <AccordionItem value="how">
+                <AccordionTrigger className="text-sm">
+                  How does this work?
+                </AccordionTrigger>
+                <AccordionContent className="flex flex-col gap-2 text-sm text-muted-foreground">
+                  <p>
+                    Zepto stock is decided per dark store, and each store only
+                    covers ~3 km. This app finds every dark store inside your
+                    radius and asks each one, live, whether it has your product
+                    — so prices and stock are per-store and current.
+                  </p>
+                  <p>
+                    Tap any store pin or row for details, including how its
+                    price compares to your own store's.
+                  </p>
+                </AccordionContent>
+              </AccordionItem>
+              <AccordionItem value="slow">
+                <AccordionTrigger className="text-sm">
+                  Why is the first search in an area slow?
+                </AccordionTrigger>
+                <AccordionContent className="text-sm text-muted-foreground">
+                  Discovering the stores in a new area means sweeping the whole
+                  circle once. Mapped areas are remembered, so every later
+                  search there only runs the live stock checks and finishes in
+                  seconds.
+                </AccordionContent>
+              </AccordionItem>
+            </Accordion>
           </>
         )}
       </div>
+
+      {/* Store detail bottom sheet */}
+      <Drawer
+        open={!!detail}
+        onOpenChange={(open) => {
+          if (!open) setDetail(null)
+        }}
+      >
+        <DrawerContent>
+          {detail && (
+            <>
+              <DrawerHeader>
+                <DrawerTitle>{prettyStoreName(detail.store.name)}</DrawerTitle>
+                <DrawerDescription>
+                  {[detail.store.city, `${detail.distance_km} km away`]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </DrawerDescription>
+              </DrawerHeader>
+              <div className="flex flex-col gap-3 px-4">
+                <Item variant="outline" size="sm">
+                  {product?.image_url && (
+                    <img
+                      src={product.image_url}
+                      alt=""
+                      className="size-12 shrink-0 rounded-lg border object-cover"
+                    />
+                  )}
+                  <ItemContent>
+                    <ItemTitle>{product?.name}</ItemTitle>
+                    <ItemDescription>
+                      {STATUS_LABEL[detail.status]}
+                      {detail.store.id === cheapestId && " · cheapest nearby"}
+                    </ItemDescription>
+                  </ItemContent>
+                  <ItemActions className="flex-col items-end gap-0">
+                    {detail.status === "in_stock" && detail.price != null ? (
+                      <>
+                        <span className="font-semibold tabular-nums">
+                          ₹{formatPrice(detail.price)}
+                        </span>
+                        {detail.mrp != null && detail.mrp > detail.price && (
+                          <s className="text-xs text-muted-foreground tabular-nums">
+                            ₹{formatPrice(detail.mrp)}
+                          </s>
+                        )}
+                      </>
+                    ) : (
+                      <Badge variant={STATUS_VARIANT[detail.status]}>
+                        {STATUS_LABEL[detail.status]}
+                      </Badge>
+                    )}
+                  </ItemActions>
+                </Item>
+                {detail.status === "in_stock" &&
+                  detail.price != null &&
+                  homePrice != null &&
+                  (detail.price !== homePrice ? (
+                    <p className="text-sm text-muted-foreground">
+                      ₹{formatPrice(Math.abs(detail.price - homePrice))}{" "}
+                      {detail.price < homePrice ? "cheaper" : "more expensive"}{" "}
+                      than at your store.
+                    </p>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">
+                      Same price as your store.
+                    </p>
+                  ))}
+                <p className="text-xs text-muted-foreground">
+                  To order from here, set a Zepto delivery address in this area
+                  — stock belongs to the store, not the app.
+                </p>
+              </div>
+              <DrawerFooter>
+                {view === "list" && (
+                  <Button variant="outline" onClick={showOnMap}>
+                    <HugeiconsIcon icon={MapPinIcon} data-icon="inline-start" />
+                    Show on map
+                  </Button>
+                )}
+                <DrawerClose asChild>
+                  <Button variant="ghost">Close</Button>
+                </DrawerClose>
+              </DrawerFooter>
+            </>
+          )}
+        </DrawerContent>
+      </Drawer>
 
       {/* Sticky action bar — primary control always within thumb reach */}
       {resolved && !locked && (
@@ -715,6 +967,8 @@ export function App() {
           </div>
         </div>
       )}
+
+      <Toaster position="top-center" />
     </>
   )
 }

@@ -14,6 +14,7 @@ export interface SearchState {
   discovery: { probed: number; failed: number; total: number } | null
   totalStores: number
   summary: SearchSummary | null
+  notice: string | null
   error: string | null
 }
 
@@ -24,6 +25,7 @@ const INITIAL: SearchState = {
   discovery: null,
   totalStores: 0,
   summary: null,
+  notice: null,
   error: null,
 }
 
@@ -95,6 +97,9 @@ export function useSearch() {
               totalStores: Math.max(s.totalStores, s.results.length + 1),
               results: [...s.results, event],
             }))
+            break
+          case "notice":
+            setState((s) => ({ ...s, notice: event.message }))
             break
           case "done":
             // Close before React re-renders, or the browser auto-reconnects
