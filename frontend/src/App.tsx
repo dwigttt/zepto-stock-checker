@@ -74,6 +74,7 @@ import { Spinner } from "@/components/ui/spinner"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { LocationSearch } from "@/components/location-search"
+import { ThemeToggle } from "@/components/theme-toggle"
 import {
   ResultsList,
   ResultsSkeleton,
@@ -194,8 +195,10 @@ export function App() {
     setTokenInput("")
   }
 
-  const { state, start, cancel } = useSearch()
+  const { state, start, cancel, reset } = useSearch()
   const autoRan = useRef(false)
+  const [helpValue, setHelpValue] = useState("")
+  const helpRef = useRef<HTMLDivElement>(null)
 
   const setCoords = (c: GeocodeResponse | null) => {
     setCoordsState(c)
@@ -366,6 +369,30 @@ export function App() {
     setDetail(result)
   }
 
+  // Brand click → fresh start: drop the product and any results, keep the
+  // saved location and recents, scroll back up to step 1.
+  function resetToStart() {
+    reset()
+    setLinkText("")
+    setResolved(null)
+    resolvedFor.current = null
+    setResolveError(null)
+    setLastRunKey(null)
+    setSelectedId(null)
+    setDetail(null)
+    setOnlyInStock(false)
+    setHelpValue("")
+    autoRan.current = false
+    window.scrollTo({ top: 0, behavior: "smooth" })
+  }
+
+  function showHelp() {
+    setHelpValue("how")
+    requestAnimationFrame(() =>
+      helpRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
+    )
+  }
+
   function showOnMap() {
     setView("map")
     setDetail(null)
@@ -382,15 +409,38 @@ export function App() {
 
   return (
     <>
-      <div className="mx-auto flex min-h-svh w-full max-w-xl flex-col gap-5 p-4 px-[max(1rem,env(safe-area-inset-left),env(safe-area-inset-right))] pt-[max(1rem,env(safe-area-inset-top))] pb-[calc(11rem+env(safe-area-inset-bottom))]">
-        <header className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 pt-2">
-          <h1 className="text-2xl font-semibold tracking-tight">
-            Zepto Finder
-          </h1>
-          <p className="text-xs text-muted-foreground">
-            find it in stock, nearby
-          </p>
-        </header>
+      <header className="sticky top-0 z-40 border-b bg-background/80 backdrop-blur">
+        <nav className="mx-auto flex w-full max-w-xl items-center justify-between gap-3 px-[max(1rem,env(safe-area-inset-left),env(safe-area-inset-right))] pt-[max(0.625rem,env(safe-area-inset-top))] pb-2.5">
+          <button
+            type="button"
+            onClick={resetToStart}
+            aria-label="Zepto Finder — start a new search"
+            className="flex items-baseline gap-2 rounded-md text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <span className="text-lg font-semibold tracking-tight">
+              <span className="text-primary">Zepto</span> Finder
+            </span>
+            <span className="hidden text-xs text-muted-foreground sm:inline">
+              find it in stock, nearby
+            </span>
+          </button>
+          <div className="flex items-center gap-0.5">
+            {!locked && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-muted-foreground"
+                onClick={showHelp}
+              >
+                How it works
+              </Button>
+            )}
+            <ThemeToggle />
+          </div>
+        </nav>
+      </header>
+
+      <div className="mx-auto flex min-h-svh w-full max-w-xl flex-col gap-5 p-4 px-[max(1rem,env(safe-area-inset-left),env(safe-area-inset-right))] pb-[calc(11rem+env(safe-area-inset-bottom))]">
 
         {locked ? (
           <Card>
@@ -710,6 +760,12 @@ export function App() {
                     statusText
                   )}
                 </p>
+                {inStock.length > 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    Guest prices — Zepto often shows a lower price in its own
+                    app, especially for Pass members.
+                  </p>
+                )}
                 <TabsContent value="map">
                   <div className="overflow-hidden rounded-xl border bg-card">
                     <ResultsMap
@@ -781,7 +837,14 @@ export function App() {
                 </Empty>
               )}
 
-            <Accordion type="single" collapsible className="mt-auto">
+            <Accordion
+              type="single"
+              collapsible
+              ref={helpRef}
+              value={helpValue}
+              onValueChange={setHelpValue}
+              className="mt-auto scroll-mt-24"
+            >
               <AccordionItem value="how">
                 <AccordionTrigger className="text-sm">
                   How does this work?
@@ -797,6 +860,18 @@ export function App() {
                     Tap any store pin or row for details, including how its
                     price compares to your own store's.
                   </p>
+                </AccordionContent>
+              </AccordionItem>
+              <AccordionItem value="price">
+                <AccordionTrigger className="text-sm">
+                  Why does the price differ from my Zepto app?
+                </AccordionTrigger>
+                <AccordionContent className="text-sm text-muted-foreground">
+                  This tool checks Zepto as a guest. Zepto applies campaign and
+                  Pass discounts in its own app that its public catalog doesn't
+                  expose, so the same item can read ₹99 here and ₹93 in your app.
+                  The discount tends to apply evenly across stores, so the
+                  cheapest-store comparison still holds.
                 </AccordionContent>
               </AccordionItem>
               <AccordionItem value="slow">
@@ -887,6 +962,12 @@ export function App() {
                       Same price as your store.
                     </p>
                   ))}
+                {detail.status === "in_stock" && detail.price != null && (
+                  <p className="text-xs text-muted-foreground">
+                    Guest price — Zepto's app may show a lower price, especially
+                    for Pass members.
+                  </p>
+                )}
                 <p className="text-xs text-muted-foreground">
                   To order from here, set a Zepto delivery address in this area
                   — stock belongs to the store, not the app.

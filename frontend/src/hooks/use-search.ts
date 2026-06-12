@@ -51,6 +51,11 @@ export function useSearch() {
     setState((s) => (s.phase === "searching" ? { ...s, phase: "done" } : s))
   }, [stop])
 
+  const reset = useCallback(() => {
+    stop()
+    setState(INITIAL)
+  }, [stop])
+
   useEffect(() => stop, [stop])
 
   const start = useCallback(
@@ -129,5 +134,5 @@ export function useSearch() {
     [stop]
   )
 
-  return { state, start, stop, cancel }
+  return { state, start, stop, cancel, reset }
 }

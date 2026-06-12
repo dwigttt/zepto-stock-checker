@@ -5,7 +5,17 @@ import { Circle, CircleMarker, MapContainer, Popup, TileLayer, useMap } from "re
 import "leaflet/dist/leaflet.css"
 
 import { cn } from "@/lib/utils"
+import { useTheme } from "@/components/theme-provider"
 import type { StoreResult } from "@/lib/api"
+
+// Carto basemaps track the app theme: Positron (light) / Dark Matter (dark).
+// Cleaner than default OSM tiles and they actually have a dark variant.
+const TILE_URL = {
+  light: "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
+  dark: "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
+} as const
+const TILE_ATTRIBUTION =
+  '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'
 
 const STATUS_COLORS: Record<StoreResult["status"], string> = {
   in_stock: "#16a34a",
@@ -44,6 +54,7 @@ interface ResultsMapProps {
 }
 
 export function ResultsMap({ lat, lng, radiusKm, results, selectedId, onSelect, className }: ResultsMapProps) {
+  const { resolvedTheme } = useTheme()
   return (
     <MapContainer
       center={[lat, lng]}
@@ -52,20 +63,21 @@ export function ResultsMap({ lat, lng, radiusKm, results, selectedId, onSelect, 
       scrollWheelZoom={false}
     >
       <TileLayer
-        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-        url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+        key={resolvedTheme}
+        attribution={TILE_ATTRIBUTION}
+        url={TILE_URL[resolvedTheme]}
       />
       <FitToRadius lat={lat} lng={lng} radiusKm={radiusKm} />
       <FlyToSelected results={results} selectedId={selectedId} />
       <Circle
         center={[lat, lng]}
         radius={radiusKm * 1000}
-        pathOptions={{ color: "#6366f1", weight: 1, fillOpacity: 0.04 }}
+        pathOptions={{ color: "#7c3aed", weight: 1, fillOpacity: 0.04 }}
       />
       <CircleMarker
         center={[lat, lng]}
         radius={7}
-        pathOptions={{ color: "#4f46e5", fillColor: "#6366f1", fillOpacity: 1 }}
+        pathOptions={{ color: "#6d28d9", fillColor: "#7c3aed", fillOpacity: 1 }}
       >
         <Popup>Your location</Popup>
       </CircleMarker>
@@ -75,7 +87,7 @@ export function ResultsMap({ lat, lng, radiusKm, results, selectedId, onSelect, 
           center={[r.store.lat, r.store.lng]}
           radius={r.store.id === selectedId ? 12 : 9}
           pathOptions={{
-            color: r.store.id === selectedId ? "#1d4ed8" : "#ffffff",
+            color: r.store.id === selectedId ? "#6d28d9" : "#ffffff",
             weight: 2,
             fillColor: STATUS_COLORS[r.status],
             fillOpacity: 0.95,
