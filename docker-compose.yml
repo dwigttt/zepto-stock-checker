@@ -1,0 +1,15 @@
+services:
+  zepto-finder:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - zepto-data:/data
+    environment:
+      # Optional Indian residential proxy, e.g. http://user:pass@host:port
+      - PROXY_URL=${PROXY_URL:-}
+      - ZEPTO_CONCURRENCY=${ZEPTO_CONCURRENCY:-5}
+    restart: unless-stopped
+
+volumes:
+  zepto-data:
