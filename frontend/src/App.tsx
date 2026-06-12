@@ -5,6 +5,7 @@ import {
   CancelCircleIcon,
   CheckmarkCircle02Icon,
   LocationOffline01Icon,
+  LockKeyIcon,
   PackageRemoveIcon,
   Refresh01Icon,
   Search01Icon,
@@ -12,7 +13,13 @@ import {
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card"
 import {
   Empty,
   EmptyDescription,
@@ -20,21 +27,40 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from "@/components/ui/empty"
-import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field"
+import {
+  Field,
+  FieldDescription,
+  FieldGroup,
+  FieldLabel,
+} from "@/components/ui/field"
 import {
   InputGroup,
   InputGroupAddon,
+  InputGroupButton,
   InputGroupInput,
 } from "@/components/ui/input-group"
 import { Progress } from "@/components/ui/progress"
+import { Separator } from "@/components/ui/separator"
 import { Slider } from "@/components/ui/slider"
 import { Spinner } from "@/components/ui/spinner"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { LocationSearch } from "@/components/location-search"
-import { ResultsList, formatPrice, prettyStoreName } from "@/components/results-list"
+import {
+  ResultsList,
+  formatPrice,
+  prettyStoreName,
+} from "@/components/results-list"
 import { ResultsMap } from "@/components/results-map"
 import { useSearch } from "@/hooks/use-search"
-import { resolveLink, type GeocodeResponse, type ResolveResponse } from "@/lib/api"
+import {
+  getConfig,
+  getToken,
+  resolveLink,
+  setToken,
+  type AppConfig,
+  type GeocodeResponse,
+  type ResolveResponse,
+} from "@/lib/api"
 
 interface RecentProduct {
   pvid: string
@@ -61,10 +87,25 @@ function save(key: string, value: unknown) {
 }
 
 function looksResolvable(text: string): boolean {
-  return /\/pvid\/[0-9a-fA-F-]{36}/.test(text) || (/zepto/i.test(text) && /https?:\/\//.test(text))
+  return (
+    /\/pvid\/[0-9a-fA-F-]{36}/.test(text) ||
+    (/zepto/i.test(text) && /https?:\/\//.test(text))
+  )
 }
 
 const RADIUS_PRESETS = [5, 10, 25, 50]
+
+function StepBadge({ n, done }: { n: number; done?: boolean }) {
+  return (
+    <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium tabular-nums text-muted-foreground">
+      {done ? (
+        <HugeiconsIcon icon={CheckmarkCircle02Icon} className="text-primary" />
+      ) : (
+        n
+      )}
+    </span>
+  )
+}
 
 export function App() {
   const [linkText, setLinkText] = useState("")
@@ -73,13 +114,50 @@ export function App() {
   const [resolved, setResolved] = useState<ResolveResponse | null>(null)
   const resolvedFor = useRef<string | null>(null)
 
-  const [recent, setRecent] = useState<RecentProduct[]>(() => load("zf.recent") ?? [])
-  const [coords, setCoordsState] = useState<GeocodeResponse | null>(() => load("zf.coords"))
-  const [radiusKm, setRadiusState] = useState<number>(() => load("zf.radius") ?? 10)
+  const [recent, setRecent] = useState<RecentProduct[]>(
+    () => load("zf.recent") ?? []
+  )
+  const [coords, setCoordsState] = useState<GeocodeResponse | null>(() =>
+    load("zf.coords")
+  )
+  const [radiusKm, setRadiusState] = useState<number>(
+    () => load("zf.radius") ?? 10
+  )
 
   const [onlyInStock, setOnlyInStock] = useState(false)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [lastRunKey, setLastRunKey] = useState<string | null>(null)
+
+  const [appConfig, setAppConfig] = useState<AppConfig | null>(null)
+  const [hasToken, setHasToken] = useState(() => !!getToken())
+  const [tokenInput, setTokenInput] = useState("")
+
+  // Learn the instance's radius cap and whether it's token-gated.
+  useEffect(() => {
+    getConfig()
+      .then((cfg) => {
+        setAppConfig(cfg)
+        setRadiusState((r) => {
+          const clamped = Math.min(r, cfg.max_radius_km)
+          if (clamped !== r) save("zf.radius", clamped)
+          return clamped
+        })
+      })
+      .catch(() => {
+        // Best-effort: fall back to defaults if /api/config is unreachable.
+      })
+  }, [])
+
+  const maxRadius = appConfig?.max_radius_km ?? 50
+  const locked = (appConfig?.auth_required ?? false) && !hasToken
+
+  function unlock() {
+    const value = tokenInput.trim()
+    if (!value) return
+    setToken(value)
+    setHasToken(true)
+    setTokenInput("")
+  }
 
   const { state, start, cancel } = useSearch()
   const autoRan = useRef(false)
@@ -115,7 +193,9 @@ export function App() {
       })
     } catch (e) {
       setResolved(null)
-      setResolveError(e instanceof Error ? e.message : "Couldn't read that link.")
+      setResolveError(
+        e instanceof Error ? e.message : "Couldn't read that link."
+      )
     } finally {
       setResolving(false)
     }
@@ -124,7 +204,13 @@ export function App() {
   // Auto-resolve as soon as the pasted text looks like a Zepto link.
   useEffect(() => {
     const text = linkText.trim()
-    if (!text || resolving || resolvedFor.current === text || !looksResolvable(text)) return
+    if (
+      !text ||
+      resolving ||
+      resolvedFor.current === text ||
+      !looksResolvable(text)
+    )
+      return
     const timer = setTimeout(() => doResolve(text), 350)
     return () => clearTimeout(timer)
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -140,7 +226,13 @@ export function App() {
     setLastRunKey(searchKey)
     setSelectedId(null)
     setOnlyInStock(false)
-    start({ pvid: resolved.pvid, lat: coords.lat, lng: coords.lng, radiusKm, force })
+    start({
+      pvid: resolved.pvid,
+      lat: coords.lat,
+      lng: coords.lng,
+      radiusKm,
+      force,
+    })
   }
 
   // Kick off the first search automatically once product + location are known.
@@ -156,13 +248,16 @@ export function App() {
     () =>
       [...state.results].sort(
         (a, b) =>
-          (a.status === "in_stock" ? 0 : 1) - (b.status === "in_stock" ? 0 : 1) ||
-          a.distance_km - b.distance_km
+          (a.status === "in_stock" ? 0 : 1) -
+            (b.status === "in_stock" ? 0 : 1) || a.distance_km - b.distance_km
       ),
     [state.results]
   )
 
-  const inStock = useMemo(() => sortedResults.filter((r) => r.status === "in_stock"), [sortedResults])
+  const inStock = useMemo(
+    () => sortedResults.filter((r) => r.status === "in_stock"),
+    [sortedResults]
+  )
   const cheapestId = useMemo(() => {
     let best: { id: string; price: number } | null = null
     for (const r of inStock) {
@@ -177,290 +272,450 @@ export function App() {
 
   const searching = state.phase === "searching"
   const probing =
-    searching && state.discovery !== null && state.discovery.probed < state.discovery.total
+    searching &&
+    state.discovery !== null &&
+    state.discovery.probed < state.discovery.total
   const homeInStock = state.home?.product?.status === "in_stock"
-  const homeOnlySearch = state.phase === "done" && homeInStock && state.results.length === 0
-  const paramsChanged = lastRunKey !== null && searchKey !== null && searchKey !== lastRunKey
+  const homeOnlySearch =
+    state.phase === "done" && homeInStock && state.results.length === 0
+  const paramsChanged =
+    lastRunKey !== null && searchKey !== null && searchKey !== lastRunKey
+  const showResults =
+    coords && (searching || state.phase === "done") && !homeOnlySearch
 
   function handleSelect(id: string) {
     setSelectedId(id)
-    document.getElementById(`store-${id}`)?.scrollIntoView({ behavior: "smooth", block: "nearest" })
+    document
+      .getElementById(`store-${id}`)
+      ?.scrollIntoView({ behavior: "smooth", block: "nearest" })
   }
 
   const product = resolved?.product
 
+  const statusText = probing
+    ? "Mapping Zepto stores in this area…"
+    : state.totalStores > 0
+      ? `Checking stock at ${state.results.length}/${state.totalStores} stores…`
+      : "Checking your store…"
+
   return (
-    <div className="mx-auto flex min-h-svh w-full max-w-xl flex-col gap-6 p-4 pb-16">
-      <header className="flex flex-col gap-1 pt-2">
-        <h1 className="text-2xl font-semibold tracking-tight">Zepto Finder</h1>
-        <p className="text-sm text-muted-foreground">
-          Paste a shared Zepto product link and see which nearby stores actually have it.
-        </p>
-      </header>
+    <>
+      <div className="mx-auto flex min-h-svh w-full max-w-xl flex-col gap-5 p-4 pb-40">
+        <header className="flex items-baseline justify-between gap-3 pt-2">
+          <h1 className="text-2xl font-semibold tracking-tight">
+            Zepto Finder
+          </h1>
+          <p className="text-xs text-muted-foreground">
+            find it in stock, nearby
+          </p>
+        </header>
 
-      <FieldGroup>
-        <Field data-invalid={resolveError ? true : undefined}>
-          <FieldLabel htmlFor="link">Zepto product link</FieldLabel>
-          <InputGroup>
-            <InputGroupInput
-              id="link"
-              placeholder="https://www.zepto.com/pn/…/pvid/…"
-              value={linkText}
-              aria-invalid={resolveError ? true : undefined}
-              onChange={(e) => setLinkText(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && looksResolvable(linkText) && doResolve(linkText.trim())}
-            />
-            <InputGroupAddon align="inline-end">
-              {resolving ? (
-                <Spinner />
-              ) : resolved ? (
-                <HugeiconsIcon icon={CheckmarkCircle02Icon} className="text-primary" />
-              ) : (
-                <HugeiconsIcon icon={Search01Icon} className="text-muted-foreground" />
-              )}
-            </InputGroupAddon>
-          </InputGroup>
-          {resolveError ? (
-            <FieldDescription className="text-destructive">{resolveError}</FieldDescription>
-          ) : (
-            <FieldDescription>
-              Share any product from the Zepto app and paste the link — it loads automatically.
-            </FieldDescription>
-          )}
-        </Field>
-        {recent.length > 0 && !resolved && (
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs text-muted-foreground">Recent:</span>
-            {recent.map((r) => (
-              <button
-                type="button"
-                key={r.pvid}
-                onClick={() => setLinkText(r.link)}
-                className="flex items-center gap-2 rounded-full border bg-card py-1 pl-1 pr-3 text-xs transition-colors hover:bg-muted/50"
-              >
-                {r.image_url && (
-                  <img src={r.image_url} alt="" className="size-6 rounded-full border object-cover" />
+        {locked ? (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <HugeiconsIcon
+                  icon={LockKeyIcon}
+                  className="text-muted-foreground"
+                />
+                Private instance
+              </CardTitle>
+              <CardDescription>
+                Open the invite link you were given (it carries the access
+                token), or paste the token below.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Field>
+                <FieldLabel htmlFor="token">Access token</FieldLabel>
+                <InputGroup>
+                  <InputGroupInput
+                    id="token"
+                    placeholder="Paste access token"
+                    value={tokenInput}
+                    onChange={(e) => setTokenInput(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && unlock()}
+                  />
+                  <InputGroupAddon align="inline-end">
+                    <InputGroupButton
+                      onClick={unlock}
+                      disabled={!tokenInput.trim()}
+                    >
+                      Unlock
+                    </InputGroupButton>
+                  </InputGroupAddon>
+                </InputGroup>
+              </Field>
+            </CardContent>
+          </Card>
+        ) : (
+          <>
+            {/* Step 1 — product */}
+            <Card className="animate-in fade-in-0 slide-in-from-bottom-1">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <StepBadge n={1} done={!!resolved} />
+                  Product
+                </CardTitle>
+                {!resolved && (
+                  <CardDescription>
+                    Share any product from the Zepto app and paste the link —
+                    it loads automatically.
+                  </CardDescription>
                 )}
-                <span className="max-w-36 truncate">{r.name ?? "Product"}</span>
-              </button>
-            ))}
-          </div>
-        )}
-      </FieldGroup>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-4">
+                <Field data-invalid={resolveError ? true : undefined}>
+                  <InputGroup>
+                    <InputGroupInput
+                      id="link"
+                      placeholder="https://www.zepto.com/pn/…/pvid/…"
+                      value={linkText}
+                      aria-invalid={resolveError ? true : undefined}
+                      onChange={(e) => setLinkText(e.target.value)}
+                      onKeyDown={(e) =>
+                        e.key === "Enter" &&
+                        looksResolvable(linkText) &&
+                        doResolve(linkText.trim())
+                      }
+                    />
+                    <InputGroupAddon align="inline-end">
+                      {resolving ? (
+                        <Spinner />
+                      ) : resolved ? (
+                        <HugeiconsIcon
+                          icon={CheckmarkCircle02Icon}
+                          className="text-primary"
+                        />
+                      ) : (
+                        <HugeiconsIcon
+                          icon={Search01Icon}
+                          className="text-muted-foreground"
+                        />
+                      )}
+                    </InputGroupAddon>
+                  </InputGroup>
+                  {resolveError && (
+                    <FieldDescription className="text-destructive">
+                      {resolveError}
+                    </FieldDescription>
+                  )}
+                </Field>
 
-      {product && (
-        <Card className="animate-in fade-in-0 slide-in-from-bottom-1">
-          <CardContent className="flex items-center gap-4">
-            {product.image_url && (
-              <img
-                src={product.image_url}
-                alt=""
-                className="size-16 shrink-0 rounded-lg border object-cover"
-              />
+                {recent.length > 0 && !resolved && (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-xs text-muted-foreground">
+                      Recent:
+                    </span>
+                    {recent.map((r) => (
+                      <button
+                        type="button"
+                        key={r.pvid}
+                        onClick={() => setLinkText(r.link)}
+                        className="flex items-center gap-2 rounded-full border bg-card py-1 pr-3 pl-1 text-xs transition-colors hover:bg-muted/50"
+                      >
+                        {r.image_url && (
+                          <img
+                            src={r.image_url}
+                            alt=""
+                            className="size-6 rounded-full border object-cover"
+                          />
+                        )}
+                        <span className="max-w-36 truncate">
+                          {r.name ?? "Product"}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {product && (
+                  <>
+                    <Separator />
+                    <div className="flex items-center gap-4 animate-in fade-in-0 slide-in-from-bottom-1">
+                      {product.image_url && (
+                        <img
+                          src={product.image_url}
+                          alt=""
+                          className="size-16 shrink-0 rounded-lg border object-cover"
+                        />
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate font-medium">{product.name}</p>
+                        {product.brand && (
+                          <p className="text-sm text-muted-foreground">
+                            {product.brand}
+                          </p>
+                        )}
+                      </div>
+                      {product.price != null && (
+                        <div className="flex shrink-0 flex-col items-end">
+                          <span className="font-semibold tabular-nums">
+                            ₹{formatPrice(product.price)}
+                          </span>
+                          {product.mrp != null &&
+                            product.mrp > product.price && (
+                              <s className="text-xs text-muted-foreground tabular-nums">
+                                ₹{formatPrice(product.mrp)}
+                              </s>
+                            )}
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Step 2 — location & radius */}
+            {resolved && (
+              <Card className="animate-in fade-in-0 slide-in-from-bottom-1">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <StepBadge n={2} done={!!coords} />
+                    Where to look
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <FieldGroup>
+                    <LocationSearch coords={coords} onCoords={setCoords} />
+                    <Field>
+                      <div className="flex items-center justify-between">
+                        <FieldLabel htmlFor="radius">Search radius</FieldLabel>
+                        <span className="text-sm font-medium tabular-nums">
+                          {radiusKm} km
+                        </span>
+                      </div>
+                      <Slider
+                        id="radius"
+                        min={1}
+                        max={maxRadius}
+                        step={1}
+                        value={[radiusKm]}
+                        onValueChange={(v: number[]) => setRadius(v[0])}
+                      />
+                      <ToggleGroup
+                        type="single"
+                        variant="outline"
+                        size="sm"
+                        className="w-full"
+                        value={String(radiusKm)}
+                        onValueChange={(v: string) => v && setRadius(Number(v))}
+                      >
+                        {RADIUS_PRESETS.filter((km) => km <= maxRadius).map(
+                          (km) => (
+                            <ToggleGroupItem
+                              key={km}
+                              value={String(km)}
+                              className="flex-1"
+                            >
+                              {km} km
+                            </ToggleGroupItem>
+                          )
+                        )}
+                      </ToggleGroup>
+                    </Field>
+                  </FieldGroup>
+                </CardContent>
+              </Card>
             )}
-            <div className="min-w-0 flex-1">
-              <p className="truncate font-medium">{product.name}</p>
-              {product.brand && <p className="text-sm text-muted-foreground">{product.brand}</p>}
-            </div>
-            {product.price != null && (
-              <div className="flex shrink-0 flex-col items-end">
-                <span className="font-semibold tabular-nums">₹{formatPrice(product.price)}</span>
-                {product.mrp != null && product.mrp > product.price && (
-                  <s className="text-xs text-muted-foreground tabular-nums">
-                    ₹{formatPrice(product.mrp)}
-                  </s>
+
+            {state.error && (
+              <Alert variant="destructive">
+                <HugeiconsIcon icon={CancelCircleIcon} />
+                <AlertTitle>Search failed</AlertTitle>
+                <AlertDescription>{state.error}</AlertDescription>
+              </Alert>
+            )}
+
+            {state.home && (
+              <Alert className="animate-in fade-in-0 slide-in-from-bottom-1">
+                <HugeiconsIcon
+                  icon={
+                    homeInStock
+                      ? CheckmarkCircle02Icon
+                      : state.home.serviceable
+                        ? PackageRemoveIcon
+                        : LocationOffline01Icon
+                  }
+                />
+                <AlertTitle>
+                  {homeInStock
+                    ? "In stock at your location 🎉"
+                    : state.home.serviceable
+                      ? "Not available at your location"
+                      : "Zepto doesn't deliver to this exact spot"}
+                </AlertTitle>
+                <AlertDescription>
+                  {state.home.serviceable ? (
+                    <>
+                      Your store: {prettyStoreName(state.home.store_name)}
+                      {state.home.eta_minutes != null &&
+                        ` · ~${state.home.eta_minutes} min delivery`}
+                      {homeInStock && state.home.product?.price != null && (
+                        <> · ₹{formatPrice(state.home.product.price)}</>
+                      )}
+                    </>
+                  ) : (
+                    "Checking stores in the area instead."
+                  )}
+                </AlertDescription>
+              </Alert>
+            )}
+
+            {homeOnlySearch && (
+              <Button variant="outline" onClick={() => runSearch(true)}>
+                <HugeiconsIcon icon={Search01Icon} data-icon="inline-start" />
+                Search nearby stores anyway
+              </Button>
+            )}
+
+            {/* Results — map + list as one block */}
+            {showResults && (
+              <section className="flex flex-col gap-3">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-sm font-medium">
+                    Nearby stores
+                    {sortedResults.length > 0 && (
+                      <span className="font-normal text-muted-foreground">
+                        {" "}
+                        · in stock at {inStock.length} of {sortedResults.length}
+                      </span>
+                    )}
+                  </p>
+                  {sortedResults.length > 0 && (
+                    <ToggleGroup
+                      type="single"
+                      variant="outline"
+                      size="sm"
+                      value={onlyInStock ? "in" : "all"}
+                      onValueChange={(v: string) =>
+                        v && setOnlyInStock(v === "in")
+                      }
+                    >
+                      <ToggleGroupItem value="all">All</ToggleGroupItem>
+                      <ToggleGroupItem value="in">In stock</ToggleGroupItem>
+                    </ToggleGroup>
+                  )}
+                </div>
+                <div className="overflow-hidden rounded-xl border bg-card">
+                  <ResultsMap
+                    lat={coords.lat}
+                    lng={coords.lng}
+                    radiusKm={radiusKm}
+                    results={visibleResults}
+                    selectedId={selectedId}
+                    onSelect={handleSelect}
+                  />
+                  {visibleResults.length > 0 && (
+                    <>
+                      <Separator />
+                      <ResultsList
+                        results={visibleResults}
+                        selectedId={selectedId}
+                        cheapestId={cheapestId}
+                        onSelect={handleSelect}
+                      />
+                    </>
+                  )}
+                  {sortedResults.length > 0 && visibleResults.length === 0 && (
+                    <p className="px-4 py-3 text-sm text-muted-foreground">
+                      No stores match the filter.
+                    </p>
+                  )}
+                </div>
+              </section>
+            )}
+
+            {state.phase === "done" &&
+              state.summary &&
+              !homeOnlySearch &&
+              inStock.length === 0 && (
+                <Empty>
+                  <EmptyHeader>
+                    <EmptyMedia variant="icon">
+                      <HugeiconsIcon icon={PackageRemoveIcon} />
+                    </EmptyMedia>
+                    <EmptyTitle>Not available nearby</EmptyTitle>
+                    <EmptyDescription>
+                      None of the {state.summary.stores} stores within{" "}
+                      {radiusKm} km have this in stock right now. Try a bigger
+                      radius.
+                    </EmptyDescription>
+                  </EmptyHeader>
+                </Empty>
+              )}
+          </>
+        )}
+      </div>
+
+      {/* Sticky action bar — primary control always within thumb reach */}
+      {resolved && !locked && (
+        <div className="fixed inset-x-0 bottom-0 z-30 border-t bg-background/80 backdrop-blur">
+          <div className="mx-auto flex w-full max-w-xl flex-col gap-2 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+            {searching && (
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Spinner />
+                <span className="flex-1 truncate">{statusText}</span>
+                {probing && state.discovery && (
+                  <span className="tabular-nums">
+                    {state.discovery.probed}/{state.discovery.total}
+                  </span>
                 )}
               </div>
             )}
-          </CardContent>
-        </Card>
-      )}
-
-      {resolved && (
-        <FieldGroup>
-          <LocationSearch coords={coords} onCoords={setCoords} />
-          <Field>
-            <div className="flex items-center justify-between">
-              <FieldLabel htmlFor="radius">Search radius</FieldLabel>
-              <span className="text-sm font-medium tabular-nums">{radiusKm} km</span>
-            </div>
-            <Slider
-              id="radius"
-              min={1}
-              max={50}
-              step={1}
-              value={[radiusKm]}
-              onValueChange={(v: number[]) => setRadius(v[0])}
-            />
-            <ToggleGroup
-              type="single"
-              variant="outline"
-              size="sm"
-              className="w-full"
-              value={String(radiusKm)}
-              onValueChange={(v: string) => v && setRadius(Number(v))}
-            >
-              {RADIUS_PRESETS.map((km) => (
-                <ToggleGroupItem key={km} value={String(km)} className="flex-1">
-                  {km} km
-                </ToggleGroupItem>
-              ))}
-            </ToggleGroup>
-          </Field>
-
-          {searching ? (
-            <Button variant="outline" onClick={cancel}>
-              <HugeiconsIcon icon={CancelCircleIcon} data-icon="inline-start" />
-              Cancel search
-            </Button>
-          ) : lastRunKey === null ? (
-            <Button onClick={() => runSearch(false)} disabled={!searchKey}>
-              <HugeiconsIcon icon={Search01Icon} data-icon="inline-start" />
-              Check availability
-            </Button>
-          ) : paramsChanged ? (
-            <Button onClick={() => runSearch(false)}>
-              <HugeiconsIcon icon={Search01Icon} data-icon="inline-start" />
-              Update results
-            </Button>
-          ) : (
-            <Button variant="outline" onClick={() => runSearch(false)}>
-              <HugeiconsIcon icon={Refresh01Icon} data-icon="inline-start" />
-              Re-check stock
-            </Button>
-          )}
-        </FieldGroup>
-      )}
-
-      {state.error && (
-        <Alert variant="destructive">
-          <HugeiconsIcon icon={CancelCircleIcon} />
-          <AlertTitle>Search failed</AlertTitle>
-          <AlertDescription>{state.error}</AlertDescription>
-        </Alert>
-      )}
-
-      {state.home && (
-        <Alert className="animate-in fade-in-0 slide-in-from-bottom-1">
-          <HugeiconsIcon
-            icon={
-              homeInStock
-                ? CheckmarkCircle02Icon
-                : state.home.serviceable
-                  ? PackageRemoveIcon
-                  : LocationOffline01Icon
-            }
-          />
-          <AlertTitle>
-            {homeInStock
-              ? "In stock at your location 🎉"
-              : state.home.serviceable
-                ? "Not available at your location"
-                : "Zepto doesn't deliver to this exact spot"}
-          </AlertTitle>
-          <AlertDescription>
-            {state.home.serviceable ? (
-              <>
-                Your store: {prettyStoreName(state.home.store_name)}
-                {state.home.eta_minutes != null && ` · ~${state.home.eta_minutes} min delivery`}
-                {homeInStock && state.home.product?.price != null && (
-                  <> · ₹{formatPrice(state.home.product.price)}</>
-                )}
-              </>
-            ) : (
-              "Checking stores in the area instead."
-            )}
-          </AlertDescription>
-        </Alert>
-      )}
-
-      {homeOnlySearch && (
-        <Button variant="outline" onClick={() => runSearch(true)}>
-          <HugeiconsIcon icon={Search01Icon} data-icon="inline-start" />
-          Search nearby stores anyway
-        </Button>
-      )}
-
-      {searching && (
-        <Card className="animate-in fade-in-0">
-          <CardContent className="flex flex-col gap-2 text-sm">
-            <div className="flex items-center gap-2">
-              <Spinner />
-              <span>
-                {probing && state.discovery
-                  ? `Mapping Zepto stores in this area… ${state.discovery.probed}/${state.discovery.total}`
-                  : state.totalStores > 0
-                    ? `Checking stock at ${state.results.length}/${state.totalStores} stores…`
-                    : "Checking your store…"}
-              </span>
-            </div>
             {probing && state.discovery && (
-              <>
-                <Progress
-                  value={(state.discovery.probed / Math.max(1, state.discovery.total)) * 100}
-                />
-                <p className="text-xs text-muted-foreground">
-                  First search in a new area takes a while — it's instant once mapped.
-                </p>
-              </>
+              <Progress
+                className="h-1"
+                value={
+                  (state.discovery.probed /
+                    Math.max(1, state.discovery.total)) *
+                  100
+                }
+              />
             )}
-          </CardContent>
-        </Card>
-      )}
-
-      {sortedResults.length > 0 && (
-        <div className="flex items-center justify-between gap-2">
-          <p className="text-sm text-muted-foreground">
-            In stock at {inStock.length} of {sortedResults.length} stores
-          </p>
-          <ToggleGroup
-            type="single"
-            variant="outline"
-            size="sm"
-            value={onlyInStock ? "in" : "all"}
-            onValueChange={(v: string) => v && setOnlyInStock(v === "in")}
-          >
-            <ToggleGroupItem value="all">All</ToggleGroupItem>
-            <ToggleGroupItem value="in">In stock</ToggleGroupItem>
-          </ToggleGroup>
+            {searching ? (
+              <Button variant="outline" className="w-full" onClick={cancel}>
+                <HugeiconsIcon
+                  icon={CancelCircleIcon}
+                  data-icon="inline-start"
+                />
+                Cancel search
+              </Button>
+            ) : lastRunKey === null ? (
+              <Button
+                className="w-full"
+                onClick={() => runSearch(false)}
+                disabled={!searchKey}
+              >
+                <HugeiconsIcon icon={Search01Icon} data-icon="inline-start" />
+                Check availability
+              </Button>
+            ) : paramsChanged ? (
+              <Button className="w-full" onClick={() => runSearch(false)}>
+                <HugeiconsIcon icon={Search01Icon} data-icon="inline-start" />
+                Update results
+              </Button>
+            ) : (
+              <Button
+                variant="outline"
+                className="w-full"
+                onClick={() => runSearch(false)}
+              >
+                <HugeiconsIcon icon={Refresh01Icon} data-icon="inline-start" />
+                Re-check stock
+              </Button>
+            )}
+            {probing && (
+              <p className="text-center text-xs text-muted-foreground">
+                First search in a new area takes a while — it's instant once
+                mapped.
+              </p>
+            )}
+          </div>
         </div>
       )}
-
-      {coords && (searching || state.phase === "done") && !homeOnlySearch && (
-        <ResultsMap
-          lat={coords.lat}
-          lng={coords.lng}
-          radiusKm={radiusKm}
-          results={visibleResults}
-          selectedId={selectedId}
-          onSelect={handleSelect}
-        />
-      )}
-
-      {visibleResults.length > 0 && (
-        <ResultsList
-          results={visibleResults}
-          selectedId={selectedId}
-          cheapestId={cheapestId}
-          onSelect={handleSelect}
-        />
-      )}
-
-      {state.phase === "done" && state.summary && !homeOnlySearch && inStock.length === 0 && (
-        <Empty>
-          <EmptyHeader>
-            <EmptyMedia variant="icon">
-              <HugeiconsIcon icon={PackageRemoveIcon} />
-            </EmptyMedia>
-            <EmptyTitle>Not available nearby</EmptyTitle>
-            <EmptyDescription>
-              None of the {state.summary.stores} stores within {radiusKm} km have this in stock
-              right now. Try a bigger radius.
-            </EmptyDescription>
-          </EmptyHeader>
-        </Empty>
-      )}
-    </div>
+    </>
   )
 }
 

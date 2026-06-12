@@ -4,6 +4,7 @@ import L from "leaflet"
 import { Circle, CircleMarker, MapContainer, Popup, TileLayer, useMap } from "react-leaflet"
 import "leaflet/dist/leaflet.css"
 
+import { cn } from "@/lib/utils"
 import type { StoreResult } from "@/lib/api"
 
 const STATUS_COLORS: Record<StoreResult["status"], string> = {
@@ -39,14 +40,15 @@ interface ResultsMapProps {
   results: StoreResult[]
   selectedId: string | null
   onSelect: (id: string) => void
+  className?: string
 }
 
-export function ResultsMap({ lat, lng, radiusKm, results, selectedId, onSelect }: ResultsMapProps) {
+export function ResultsMap({ lat, lng, radiusKm, results, selectedId, onSelect, className }: ResultsMapProps) {
   return (
     <MapContainer
       center={[lat, lng]}
       zoom={12}
-      className="z-0 h-72 w-full rounded-xl border"
+      className={cn("z-0 h-72 w-full", className)}
       scrollWheelZoom={false}
     >
       <TileLayer

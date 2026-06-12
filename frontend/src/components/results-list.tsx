@@ -37,7 +37,7 @@ interface ResultsListProps {
 
 export function ResultsList({ results, selectedId, cheapestId, onSelect }: ResultsListProps) {
   return (
-    <div className="flex flex-col overflow-hidden rounded-xl border">
+    <div className="flex flex-col">
       {results.map((r, i) => (
         <Fragment key={r.store.id}>
           {i > 0 && <Separator />}
