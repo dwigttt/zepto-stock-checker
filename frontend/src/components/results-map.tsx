@@ -21,6 +21,17 @@ function FitToRadius({ lat, lng, radiusKm }: { lat: number; lng: number; radiusK
   return null
 }
 
+function FlyToSelected({ results, selectedId }: { results: StoreResult[]; selectedId: string | null }) {
+  const map = useMap()
+  useEffect(() => {
+    const r = results.find((x) => x.store.id === selectedId)
+    if (r) {
+      map.flyTo([r.store.lat, r.store.lng], Math.max(map.getZoom(), 13), { duration: 0.6 })
+    }
+  }, [map, results, selectedId])
+  return null
+}
+
 interface ResultsMapProps {
   lat: number
   lng: number
@@ -43,6 +54,7 @@ export function ResultsMap({ lat, lng, radiusKm, results, selectedId, onSelect }
         url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
       <FitToRadius lat={lat} lng={lng} radiusKm={radiusKm} />
+      <FlyToSelected results={results} selectedId={selectedId} />
       <Circle
         center={[lat, lng]}
         radius={radiusKm * 1000}

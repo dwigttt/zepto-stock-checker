@@ -85,6 +85,27 @@ async def geocode(q: str = Query(min_length=2)):
     return result
 
 
+@app.get("/api/suggest")
+async def suggest(q: str = Query(min_length=2)):
+    zepto: ZeptoClient = app.state.zepto
+    try:
+        return {"suggestions": await zepto.autocomplete(q)}
+    except ZeptoError as e:
+        raise HTTPException(502, f"Zepto API error: {e}")
+
+
+@app.get("/api/place")
+async def place(place_id: str = Query(min_length=4), label: str = ""):
+    zepto: ZeptoClient = app.state.zepto
+    try:
+        result = await zepto.place_details(place_id, label)
+    except ZeptoError as e:
+        raise HTTPException(502, f"Zepto API error: {e}")
+    if not result:
+        raise HTTPException(404, "Couldn't locate that place.")
+    return result
+
+
 @app.get("/api/search")
 async def search(
     pvid: str = Query(pattern=r"^[0-9a-f-]{36}$"),

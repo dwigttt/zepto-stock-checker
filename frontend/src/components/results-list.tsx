@@ -31,25 +31,30 @@ export function formatPrice(price: number): string {
 interface ResultsListProps {
   results: StoreResult[]
   selectedId: string | null
+  cheapestId: string | null
   onSelect: (id: string) => void
 }
 
-export function ResultsList({ results, selectedId, onSelect }: ResultsListProps) {
+export function ResultsList({ results, selectedId, cheapestId, onSelect }: ResultsListProps) {
   return (
-    <div className="flex flex-col rounded-xl border">
+    <div className="flex flex-col overflow-hidden rounded-xl border">
       {results.map((r, i) => (
         <Fragment key={r.store.id}>
           {i > 0 && <Separator />}
           <button
             type="button"
+            id={`store-${r.store.id}`}
             onClick={() => onSelect(r.store.id)}
             className={cn(
-              "flex items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/50",
+              "flex items-center gap-3 px-4 py-3 text-left transition-colors animate-in fade-in-0 slide-in-from-bottom-1 hover:bg-muted/50",
               r.store.id === selectedId && "bg-muted"
             )}
           >
             <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-medium">{prettyStoreName(r.store.name)}</p>
+              <div className="flex items-center gap-2">
+                <p className="truncate text-sm font-medium">{prettyStoreName(r.store.name)}</p>
+                {r.store.id === cheapestId && <Badge variant="outline">Cheapest</Badge>}
+              </div>
               <p className="text-xs text-muted-foreground">
                 {r.store.city ? `${r.store.city} · ` : ""}
                 {r.distance_km} km away

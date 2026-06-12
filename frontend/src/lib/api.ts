@@ -19,6 +19,13 @@ export interface GeocodeResponse {
   label: string
 }
 
+export interface PlaceSuggestion {
+  place_id: string
+  description: string
+  main_text: string
+  secondary_text: string
+}
+
 export interface HomeResult {
   serviceable: boolean
   store_name: string | null
@@ -67,4 +74,17 @@ export function resolveLink(url: string, coords?: { lat: number; lng: number } |
 
 export function geocode(q: string) {
   return request<GeocodeResponse>(`/api/geocode?q=${encodeURIComponent(q)}`)
+}
+
+export function suggestPlaces(q: string, signal?: AbortSignal) {
+  return request<{ suggestions: PlaceSuggestion[] }>(
+    `/api/suggest?q=${encodeURIComponent(q)}`,
+    { signal }
+  )
+}
+
+export function placeDetails(placeId: string, label: string) {
+  return request<GeocodeResponse>(
+    `/api/place?place_id=${encodeURIComponent(placeId)}&label=${encodeURIComponent(label)}`
+  )
 }

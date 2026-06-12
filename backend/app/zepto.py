@@ -121,8 +121,8 @@ class ZeptoClient:
 
     # -- geocoding -------------------------------------------------------
 
-    async def geocode(self, query: str) -> dict | None:
-        """Pincode or free-text place → {lat, lng, label} via Zepto's maps proxy."""
+    async def autocomplete(self, query: str) -> list[dict]:
+        """Free-text place/pincode → ranked place suggestions."""
         resp = await self._request(
             "GET",
             f"{BFF_BASE}/api/v1/maps/place/autocomplete/",
@@ -132,13 +132,24 @@ class ZeptoClient:
         if resp.status_code != 200:
             raise ZeptoError(f"autocomplete failed: HTTP {resp.status_code}")
         predictions = resp.json().get("predictions") or []
-        if not predictions:
-            return None
-        place = predictions[0]
+        results = []
+        for p in predictions[:6]:
+            fmt = p.get("structured_formatting") or {}
+            results.append(
+                {
+                    "place_id": p["place_id"],
+                    "description": p.get("description", ""),
+                    "main_text": fmt.get("main_text", p.get("description", "")),
+                    "secondary_text": fmt.get("secondary_text", ""),
+                }
+            )
+        return results
+
+    async def place_details(self, place_id: str, label: str = "") -> dict | None:
         resp = await self._request(
             "GET",
             f"{BFF_BASE}/api/v1/maps/place/details/",
-            params={"place_id": place["place_id"]},
+            params={"place_id": place_id},
             headers=self._bff_headers(),
         )
         if resp.status_code != 200:
@@ -146,7 +157,15 @@ class ZeptoClient:
         loc = resp.json().get("result", {}).get("geometry", {}).get("location")
         if not loc:
             return None
-        return {"lat": loc["lat"], "lng": loc["lng"], "label": place.get("description", query)}
+        return {"lat": loc["lat"], "lng": loc["lng"], "label": label or place_id}
+
+    async def geocode(self, query: str) -> dict | None:
+        """Pincode or free-text place → {lat, lng, label} (best match)."""
+        suggestions = await self.autocomplete(query)
+        if not suggestions:
+            return None
+        best = suggestions[0]
+        return await self.place_details(best["place_id"], best["description"])
 
     # -- store resolution (the sweep primitive) ---------------------------
 

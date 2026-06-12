@@ -39,6 +39,11 @@ export function useSearch() {
     sourceRef.current = null
   }, [])
 
+  const cancel = useCallback(() => {
+    stop()
+    setState((s) => (s.phase === "searching" ? { ...s, phase: "done" } : s))
+  }, [stop])
+
   useEffect(() => stop, [stop])
 
   const start = useCallback(
@@ -106,5 +111,5 @@ export function useSearch() {
     [stop]
   )
 
-  return { state, start, stop }
+  return { state, start, stop, cancel }
 }
