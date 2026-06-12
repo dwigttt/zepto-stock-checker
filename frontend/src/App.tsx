@@ -382,8 +382,8 @@ export function App() {
 
   return (
     <>
-      <div className="mx-auto flex min-h-svh w-full max-w-xl flex-col gap-5 p-4 pb-40">
-        <header className="flex items-baseline justify-between gap-3 pt-2">
+      <div className="mx-auto flex min-h-svh w-full max-w-xl flex-col gap-5 p-4 px-[max(1rem,env(safe-area-inset-left),env(safe-area-inset-right))] pt-[max(1rem,env(safe-area-inset-top))] pb-[calc(11rem+env(safe-area-inset-bottom))]">
+        <header className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 pt-2">
           <h1 className="text-2xl font-semibold tracking-tight">
             Zepto Finder
           </h1>
@@ -494,7 +494,7 @@ export function App() {
                         type="button"
                         key={r.pvid}
                         onClick={() => setLinkText(r.link)}
-                        className="flex items-center gap-2 rounded-full border bg-card py-1 pr-3 pl-1 text-xs transition-colors hover:bg-muted/50"
+                        className="flex min-h-8 items-center gap-2 rounded-full border bg-card py-1 pr-3 pl-1 text-xs transition-colors hover:bg-muted/50"
                       >
                         {r.image_url && (
                           <img
@@ -580,7 +580,6 @@ export function App() {
                       <ToggleGroup
                         type="single"
                         variant="outline"
-                        size="sm"
                         className="w-full"
                         value={String(radiusKm)}
                         onValueChange={(v: string) => v && setRadius(Number(v))}
@@ -668,7 +667,7 @@ export function App() {
                 onValueChange={(v) => setView(v as "map" | "list")}
                 className="gap-3"
               >
-                <div className="flex items-center justify-between gap-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
                   <TabsList>
                     <TabsTrigger value="map">Map</TabsTrigger>
                     <TabsTrigger value="list">
@@ -718,6 +717,7 @@ export function App() {
                       results={visibleResults}
                       selectedId={selectedId}
                       onSelect={handleSelect}
+                      className="h-[clamp(18rem,52svh,26rem)]"
                     />
                   </div>
                 </TabsContent>
@@ -831,7 +831,7 @@ export function App() {
                     .join(" · ")}
                 </DrawerDescription>
               </DrawerHeader>
-              <div className="flex flex-col gap-3 px-4">
+              <div className="flex flex-col gap-3 overflow-y-auto px-4">
                 <Item variant="outline" size="sm">
                   {product?.image_url && (
                     <img
@@ -904,7 +904,7 @@ export function App() {
       {/* Sticky action bar — primary control always within thumb reach */}
       {resolved && !locked && (
         <div className="fixed inset-x-0 bottom-0 z-30 border-t bg-background/80 backdrop-blur">
-          <div className="mx-auto flex w-full max-w-xl flex-col gap-2 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+          <div className="mx-auto flex w-full max-w-xl flex-col gap-2 p-3 px-[max(0.75rem,env(safe-area-inset-left),env(safe-area-inset-right))] pb-[max(0.75rem,env(safe-area-inset-bottom))]">
             {searching && (
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
                 <Spinner />
@@ -927,7 +927,11 @@ export function App() {
               />
             )}
             {searching ? (
-              <Button variant="outline" className="w-full" onClick={cancel}>
+              <Button
+                variant="outline"
+                className="h-11 w-full"
+                onClick={cancel}
+              >
                 <HugeiconsIcon
                   icon={CancelCircleIcon}
                   data-icon="inline-start"
@@ -936,7 +940,7 @@ export function App() {
               </Button>
             ) : lastRunKey === null ? (
               <Button
-                className="w-full"
+                className="h-11 w-full"
                 onClick={() => runSearch(false)}
                 disabled={!searchKey}
               >
@@ -944,14 +948,14 @@ export function App() {
                 Check availability
               </Button>
             ) : paramsChanged ? (
-              <Button className="w-full" onClick={() => runSearch(false)}>
+              <Button className="h-11 w-full" onClick={() => runSearch(false)}>
                 <HugeiconsIcon icon={Search01Icon} data-icon="inline-start" />
                 Update results
               </Button>
             ) : (
               <Button
                 variant="outline"
-                className="w-full"
+                className="h-11 w-full"
                 onClick={() => runSearch(false)}
               >
                 <HugeiconsIcon icon={Refresh01Icon} data-icon="inline-start" />
@@ -968,7 +972,10 @@ export function App() {
         </div>
       )}
 
-      <Toaster position="top-center" />
+      <Toaster
+        position="top-center"
+        mobileOffset={{ top: "max(16px, env(safe-area-inset-top))" }}
+      />
     </>
   )
 }

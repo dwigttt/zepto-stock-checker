@@ -142,7 +142,11 @@ export function LocationSearch({ coords, onCoords }: LocationSearchProps) {
             {busy ? (
               <Spinner />
             ) : (
-              <InputGroupButton aria-label="Use my current location" onClick={useGps}>
+              <InputGroupButton
+                aria-label="Use my current location"
+                size="icon-sm"
+                onClick={useGps}
+              >
                 <HugeiconsIcon icon={Gps01Icon} />
               </InputGroupButton>
             )}
@@ -151,7 +155,7 @@ export function LocationSearch({ coords, onCoords }: LocationSearchProps) {
         {open && suggestions.length > 0 && (
           <div
             role="listbox"
-            className="absolute inset-x-0 top-full z-20 mt-1 overflow-hidden rounded-md border bg-popover text-popover-foreground shadow-md animate-in fade-in-0 slide-in-from-top-1"
+            className="absolute inset-x-0 top-full z-20 mt-1 max-h-72 overflow-y-auto overscroll-contain rounded-md border bg-popover text-popover-foreground shadow-md animate-in fade-in-0 slide-in-from-top-1"
           >
             {suggestions.map((s, i) => (
               <button
@@ -165,7 +169,7 @@ export function LocationSearch({ coords, onCoords }: LocationSearchProps) {
                 }}
                 onMouseEnter={() => setHighlight(i)}
                 className={cn(
-                  "flex w-full flex-col items-start gap-0.5 px-3 py-2 text-left text-sm",
+                  "flex min-h-11 w-full flex-col items-start justify-center gap-0.5 px-3 py-2 text-left text-sm",
                   i === highlight && "bg-accent text-accent-foreground"
                 )}
               >

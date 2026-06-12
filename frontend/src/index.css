@@ -126,5 +126,19 @@
     }
   html {
     @apply font-sans;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+    }
+  button,
+  [role="button"],
+  [role="option"],
+  [role="tab"],
+  input,
+  select,
+  textarea,
+  label,
+  a {
+    touch-action: manipulation;
     }
 }
