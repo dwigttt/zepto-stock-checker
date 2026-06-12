@@ -81,6 +81,8 @@ def auth_ok(request: Request) -> bool:
 
 async def require_rate(request: Request) -> None:
     """Per-client request budget. No auth — used by the public /api/config."""
+    if config.DEV_MODE:
+        return
     if not request.app.state.limiter.allow_request(client_ip(request)):
         raise HTTPException(429, "Too many requests. Slow down for a bit.")
 
@@ -196,25 +198,28 @@ async def search(
     state = request.app.state
     if not auth_ok(request):
         return _sse_error("Access token missing or invalid.")
-    # Check the cheap concurrency gate before spending any budget, so a "server
-    # busy" rejection doesn't cost a search token.
-    if not state.search_gate.try_acquire():
-        return _sse_error("The server is busy with other searches right now — try again shortly.")
-    if not state.limiter.allow_search(client_ip(request)):
-        state.search_gate.release()
-        return _sse_error("You've reached your search limit for now. Try again later.")
-    if not state.global_searches.take():
-        state.search_gate.release()
-        return _sse_error("The app has hit today's overall search limit. Try again later.")
+    # Dev bypasses every budget/gate; production enforces them. The concurrency
+    # gate is checked before spending any budget, so a "server busy" rejection
+    # doesn't cost a search token.
+    if not config.DEV_MODE:
+        if not state.search_gate.try_acquire():
+            return _sse_error("The server is busy with other searches right now — try again shortly.")
+        if not state.limiter.allow_search(client_ip(request)):
+            state.search_gate.release()
+            return _sse_error("You've reached your search limit for now. Try again later.")
+        if not state.global_searches.take():
+            state.search_gate.release()
+            return _sse_error("The app has hit today's overall search limit. Try again later.")
 
     async def stream():
         try:
             async for event in run_search(
                 state.zepto, state.cache, pvid, lat, lng, radius_km, force,
-                probe_budget=state.probe_budget,
+                probe_budget=None if config.DEV_MODE else state.probe_budget,
             ):
                 yield f"data: {json.dumps(event)}\n\n"
         finally:
+            # No-op when we never acquired (dev): the gate guards underflow.
             state.search_gate.release()
 
     return StreamingResponse(stream(), media_type="text/event-stream", headers=SSE_HEADERS)

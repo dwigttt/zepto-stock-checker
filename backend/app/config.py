@@ -12,6 +12,11 @@ ZEPTO_CONCURRENCY = int(os.environ.get("ZEPTO_CONCURRENCY", "5"))
 STATIC_DIR = Path(os.environ.get("STATIC_DIR", Path(__file__).resolve().parent.parent / "static"))
 
 # -- abuse controls --------------------------------------------------------
+# Local-dev escape hatch: disables every abuse control below — per-client and
+# global rate limits, search/probe budgets, the concurrency gate, and the
+# radius ceiling — so you can hammer the app while developing. dev.sh sets it.
+# NEVER enable this on a publicly reachable instance.
+DEV_MODE = _flag("DEV_MODE", False)
 # Shared secret gating all /api access. Unset (default) = open, for self-host
 # and local dev. Set it before exposing one instance to a group.
 APP_TOKEN = os.environ.get("APP_TOKEN") or None
@@ -43,7 +48,8 @@ PROBES_PER_DAY = int(os.environ.get("PROBES_PER_DAY", "3000"))
 
 # Public radius ceiling. Cold-sweep cost grows with area (~radius²): 25km ≈ 253
 # probes, 15km ≈ 91, 10km ≈ 37. Lower = much cheaper sweeps. Self-host can raise.
-MAX_RADIUS_KM = float(os.environ.get("MAX_RADIUS_KM", "15"))
+# Dev lifts it to the frontend's top preset so the slider isn't clamped.
+MAX_RADIUS_KM = float(os.environ.get("MAX_RADIUS_KM", "50" if DEV_MODE else "15"))
 # Dark stores cover ~3km; probe points spaced wider than that may miss stores,
 # tighter wastes requests.
 GRID_SPACING_KM = 3.0

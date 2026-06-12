@@ -10,7 +10,8 @@ echo "==> Backend deps"
 echo "==> Frontend deps"
 (cd frontend && pnpm install --silent)
 
-(cd backend && uv run uvicorn app.main:app --port 8400 --reload) &
+# DEV_MODE lifts all rate limits / search & probe budgets / radius cap locally.
+(cd backend && DEV_MODE=1 uv run uvicorn app.main:app --port 8400 --reload) &
 (cd frontend && pnpm dev) &
 
 sleep 2
