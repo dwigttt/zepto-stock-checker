@@ -35,7 +35,13 @@ export interface HomeResult {
 }
 
 export interface StoreResult {
-  store: { id: string; name: string | null; city: string | null; lat: number; lng: number }
+  store: {
+    id: string
+    name: string | null
+    city: string | null
+    lat: number
+    lng: number
+  }
   distance_km: number
   status: ProductInfo["status"]
   price: number | null
@@ -50,8 +56,55 @@ export interface SearchSummary {
   stores: number
 }
 
-async function request<T>(input: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(input, init)
+// -- access token ----------------------------------------------------------
+// A private instance is opened via an invite link carrying ?token=…; we stash
+// it, strip it from the URL (so it doesn't linger in bookmarks/screenshots),
+// and send it on every call. EventSource can't set headers, so search reads it
+// from the query string instead — see tokenQuery().
+
+const TOKEN_KEY = "zf_token"
+
+function initToken(): string | null {
+  const url = new URL(window.location.href)
+  const fromUrl = url.searchParams.get("token")
+  if (fromUrl) {
+    localStorage.setItem(TOKEN_KEY, fromUrl)
+    url.searchParams.delete("token")
+    window.history.replaceState({}, "", url.pathname + url.search + url.hash)
+    return fromUrl
+  }
+  return localStorage.getItem(TOKEN_KEY)
+}
+
+let token = initToken()
+
+export function getToken(): string | null {
+  return token
+}
+
+export function setToken(value: string): void {
+  token = value.trim() || null
+  if (token) localStorage.setItem(TOKEN_KEY, token)
+  else localStorage.removeItem(TOKEN_KEY)
+}
+
+export function tokenQuery(): string {
+  return token ? `&token=${encodeURIComponent(token)}` : ""
+}
+
+export interface AppConfig {
+  auth_required: boolean
+  max_radius_km: number
+}
+
+export function getConfig() {
+  return request<AppConfig>("/api/config")
+}
+
+async function request<T>(input: string, init: RequestInit = {}): Promise<T> {
+  const headers = new Headers(init.headers)
+  if (token) headers.set("X-App-Token", token)
+  const res = await fetch(input, { ...init, headers })
   if (!res.ok) {
     let detail = `HTTP ${res.status}`
     try {
@@ -64,7 +117,10 @@ async function request<T>(input: string, init?: RequestInit): Promise<T> {
   return res.json()
 }
 
-export function resolveLink(url: string, coords?: { lat: number; lng: number } | null) {
+export function resolveLink(
+  url: string,
+  coords?: { lat: number; lng: number } | null
+) {
   return request<ResolveResponse>("/api/resolve", {
     method: "POST",
     headers: { "Content-Type": "application/json" },

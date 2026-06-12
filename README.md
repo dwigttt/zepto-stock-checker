@@ -1,8 +1,9 @@
 # Zepto Finder
 
-Paste a shared Zepto product link, set your location and a search radius (up to
-50 km), and see which nearby Zepto dark stores actually have the item in stock —
-on a map and a distance-sorted list, with per-store prices.
+Paste a shared Zepto product link, set your location and a search radius, and
+see which nearby Zepto dark stores actually have the item in stock — on a map
+and a distance-sorted list, with per-store prices. The radius cap is
+configurable (25 km by default; see `MAX_RADIUS_KM`).
 
 **How it answers "where can I get this?":** Zepto availability is per dark
 store, not per pincode. The app geocodes your pincode (or uses GPS), checks your
@@ -54,14 +55,43 @@ volume (`/data`).
 
 Environment variables:
 
-| Variable            | Default         | Purpose                                              |
-| ------------------- | --------------- | ---------------------------------------------------- |
-| `PROXY_URL`         | _(none)_        | Route Zepto traffic through a proxy (use an Indian residential proxy if the VPS IP gets blocked) |
-| `ZEPTO_CONCURRENCY` | `5`             | Max parallel requests to Zepto                       |
-| `DATABASE_PATH`     | `/data/zepto.db`| SQLite location                                      |
+| Variable                  | Default          | Purpose                                                                              |
+| ------------------------- | ---------------- | ------------------------------------------------------------------------------------ |
+| `PROXY_URL`               | _(none)_         | Route Zepto traffic through a proxy (use an Indian residential proxy if the VPS IP gets blocked) |
+| `ZEPTO_CONCURRENCY`       | `5`              | Max parallel requests to Zepto                                                       |
+| `DATABASE_PATH`           | `/data/zepto.db` | SQLite location                                                                      |
+| `APP_TOKEN`               | _(none)_         | Shared access token. Unset = open; set it to gate all `/api` access (see below)      |
+| `MAX_RADIUS_KM`           | `25`             | Largest search radius the server will accept                                         |
+| `MAX_CONCURRENT_SEARCHES` | `3`              | Hard cap on simultaneous sweeps across all users — bounds the request rate Zepto sees |
+| `SEARCHES_PER_DAY`        | `100`            | Per-client (per-IP) daily search budget                                              |
+| `SEARCH_BURST`            | `5`              | Per-client search burst allowance before the daily refill paces them                 |
+| `REQUESTS_PER_MIN`        | `60`             | Per-client budget for the lighter endpoints (geocode/suggest/resolve)               |
+| `REQUEST_BURST`           | `30`             | Per-client request burst allowance                                                   |
+| `TRUST_FORWARDED_FOR`     | `true`           | Read the client IP from `X-Forwarded-For` (correct behind Dokploy/Traefik; turn off if the app is directly exposed, since the header is forgeable) |
 
-There's no built-in auth — if you want to gate it for friends & family, put
-Dokploy/Traefik basic-auth in front.
+### Sharing with a group
+
+The app reads public price/stock data from Zepto's **unofficial** internal API,
+so keep any shared instance small and low-volume — and **point `PROXY_URL` at an
+Indian residential proxy**, since a VPS IP serving many users is the most likely
+thing to get blocked.
+
+Turn on the built-in abuse controls before exposing one instance to a group:
+
+1. Set `APP_TOKEN` to a long random string. Every `/api` call then needs it.
+2. Share the app with the token in the URL: `https://your-host/?token=<APP_TOKEN>`.
+   The frontend stores the token, strips it from the URL, and sends it on every
+   request (as a header, and as a query param on the search stream — `EventSource`
+   can't send headers). Visitors without the token get a prompt to paste one.
+
+With `APP_TOKEN` set, the per-IP search budget and the global concurrency cap
+keep total upstream traffic bounded even if the link leaks. Tune the limits via
+the variables above. The shared SQLite cache helps a lot here: if the group is
+mostly in one or two cities, only the first search in each area is expensive.
+
+> Alternatively, skip hosting and just share the repo — each person runs their
+> own copy (the Docker setup makes this a one-liner), so traffic spreads across
+> many home IPs and there's no shared instance to abuse.
 
 ## How a search works
 

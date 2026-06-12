@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 
-import type { HomeResult, SearchSummary, StoreResult } from "@/lib/api"
+import {
+  tokenQuery,
+  type HomeResult,
+  type SearchSummary,
+  type StoreResult,
+} from "@/lib/api"
 
 export interface SearchState {
   phase: "idle" | "searching" | "done" | "error"
@@ -57,7 +62,7 @@ export function useSearch() {
         radius_km: String(radiusKm),
         force: force ? "true" : "false",
       })
-      const source = new EventSource(`/api/search?${qs}`)
+      const source = new EventSource(`/api/search?${qs}${tokenQuery()}`)
       sourceRef.current = source
       source.onmessage = (msg) => {
         const event = JSON.parse(msg.data)
@@ -74,7 +79,11 @@ export function useSearch() {
           case "discovery_progress":
             setState((s) => ({
               ...s,
-              discovery: { probed: event.probed, failed: event.failed, total: event.total },
+              discovery: {
+                probed: event.probed,
+                failed: event.failed,
+                total: event.total,
+              },
             }))
             break
           case "checking":
@@ -103,7 +112,11 @@ export function useSearch() {
         source.close()
         setState((s) =>
           s.phase === "searching"
-            ? { ...s, phase: "error", error: "Connection to the server was lost." }
+            ? {
+                ...s,
+                phase: "error",
+                error: "Connection to the server was lost.",
+              }
             : s
         )
       }

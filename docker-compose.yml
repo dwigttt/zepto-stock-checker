@@ -9,6 +9,15 @@ services:
       # Optional Indian residential proxy, e.g. http://user:pass@host:port
       - PROXY_URL=${PROXY_URL:-}
       - ZEPTO_CONCURRENCY=${ZEPTO_CONCURRENCY:-5}
+      # Abuse controls — set APP_TOKEN to gate a shared instance (see README).
+      - APP_TOKEN=${APP_TOKEN:-}
+      - MAX_RADIUS_KM=${MAX_RADIUS_KM:-25}
+      - MAX_CONCURRENT_SEARCHES=${MAX_CONCURRENT_SEARCHES:-3}
+      - SEARCHES_PER_DAY=${SEARCHES_PER_DAY:-100}
+      - SEARCH_BURST=${SEARCH_BURST:-5}
+      - REQUESTS_PER_MIN=${REQUESTS_PER_MIN:-60}
+      - REQUEST_BURST=${REQUEST_BURST:-30}
+      - TRUST_FORWARDED_FOR=${TRUST_FORWARDED_FOR:-true}
     restart: unless-stopped
 
 volumes:
