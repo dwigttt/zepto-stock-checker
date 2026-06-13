@@ -121,3 +121,23 @@ impact:
    serves that spot.
 5. Every unique store gets one live stock check; results stream onto the map
    and list as they arrive.
+
+## Contributing
+
+Contributions are welcome. Open an issue to discuss a change first, then send a
+pull request. Please keep the Zepto-specific bits isolated in
+`backend/app/zepto.py`, run `uv run pytest` before submitting, and keep any
+real-API testing personal and low-volume.
+
+## Disclaimer
+
+This project is an independent, unofficial tool. It is **not** affiliated with,
+endorsed by, or connected to Zepto in any way, and it relies on Zepto's
+undocumented internal API, which can change or break at any time. It is provided
+for personal, educational use only — you are responsible for using it in line
+with Zepto's terms of service and applicable law. See the warning above on
+keeping usage low-volume.
+
+## License
+
+Released under the [MIT License](LICENSE).
