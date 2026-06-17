@@ -6,6 +6,7 @@ import "leaflet/dist/leaflet.css"
 
 import { cn } from "@/lib/utils"
 import { useTheme } from "@/components/theme-provider"
+import { STATUS_LABEL } from "@/components/results-list"
 import type { StoreResult } from "@/lib/api"
 
 // Carto basemaps track the app theme: Positron (light) / Dark Matter (dark).
@@ -48,12 +49,16 @@ interface ResultsMapProps {
   lng: number
   radiusKm: number
   results: StoreResult[]
+  // Stock at the user's own location (incl. via the backup store) — so the
+  // "Your location" marker can match the banner instead of looking unavailable.
+  homeStatus: StoreResult["status"] | null
+  homePrice: number | null
   selectedId: string | null
   onSelect: (result: StoreResult) => void
   className?: string
 }
 
-export function ResultsMap({ lat, lng, radiusKm, results, selectedId, onSelect, className }: ResultsMapProps) {
+export function ResultsMap({ lat, lng, radiusKm, results, homeStatus, homePrice, selectedId, onSelect, className }: ResultsMapProps) {
   const { resolvedTheme } = useTheme()
   return (
     <MapContainer
@@ -76,10 +81,27 @@ export function ResultsMap({ lat, lng, radiusKm, results, selectedId, onSelect, 
       />
       <CircleMarker
         center={[lat, lng]}
-        radius={7}
-        pathOptions={{ color: "#6d28d9", fillColor: "#7c3aed", fillOpacity: 1 }}
+        radius={8}
+        pathOptions={{
+          // Purple ring keeps it identifiable as "you"; fill reflects stock at
+          // your location (green when in stock, incl. via the backup store).
+          color: "#6d28d9",
+          weight: 3,
+          fillColor: homeStatus ? STATUS_COLORS[homeStatus] : "#7c3aed",
+          fillOpacity: 1,
+        }}
       >
-        <Popup>Your location</Popup>
+        <Popup>
+          <span className="font-medium">Your location</span>
+          {homeStatus && (
+            <>
+              <br />
+              {homeStatus === "in_stock"
+                ? `In stock — ₹${homePrice}`
+                : STATUS_LABEL[homeStatus]}
+            </>
+          )}
+        </Popup>
       </CircleMarker>
       {results.map((r) => (
         <CircleMarker
@@ -97,7 +119,7 @@ export function ResultsMap({ lat, lng, radiusKm, results, selectedId, onSelect, 
           <Popup>
             <span className="font-medium">{r.store.name ?? "Store"}</span>
             <br />
-            {r.distance_km} km · {r.status === "in_stock" ? `In stock — ₹${r.price}` : "Not available"}
+            {r.distance_km} km · {r.status === "in_stock" ? `In stock — ₹${r.price}` : STATUS_LABEL[r.status]}
           </Popup>
         </CircleMarker>
       ))}

@@ -773,6 +773,8 @@ export function App() {
                       lng={coords.lng}
                       radiusKm={radiusKm}
                       results={visibleResults}
+                      homeStatus={state.home?.product?.status ?? null}
+                      homePrice={homePrice}
                       selectedId={selectedId}
                       onSelect={handleSelect}
                       className="h-[clamp(18rem,52svh,26rem)]"
