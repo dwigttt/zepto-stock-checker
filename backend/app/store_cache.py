@@ -86,6 +86,30 @@ class StoreCache:
                 return True
         return False
 
+    def _upsert_store(
+        self, lat: float, lng: float, store_id: str, store_name: str | None, city: str | None, now: str
+    ) -> Store:
+        row = self._db.execute(
+            "SELECT lat, lng, probe_count FROM stores WHERE id = ?", (store_id,)
+        ).fetchone()
+        if row:
+            # Running centroid of all probe points that hit this store
+            # approximates the store's real location.
+            olat, olng, n = row
+            nlat, nlng = (olat * n + lat) / (n + 1), (olng * n + lng) / (n + 1)
+            self._db.execute(
+                "UPDATE stores SET lat=?, lng=?, probe_count=?, last_seen_at=?, "
+                "name=COALESCE(?, name), city=COALESCE(?, city) WHERE id=?",
+                (nlat, nlng, n + 1, now, store_name, city, store_id),
+            )
+            return Store(store_id, store_name, city, nlat, nlng)
+        self._db.execute(
+            "INSERT INTO stores (id, name, city, lat, lng, probe_count, discovered_at, last_seen_at) "
+            "VALUES (?, ?, ?, ?, ?, 1, ?, ?)",
+            (store_id, store_name, city, lat, lng, now, now),
+        )
+        return Store(store_id, store_name, city, lat, lng)
+
     def record_probe(
         self,
         lat: float,
@@ -100,29 +124,28 @@ class StoreCache:
             "INSERT INTO probed_points (lat, lng, store_id, serviceable, probed_at) VALUES (?, ?, ?, ?, ?)",
             (lat, lng, store_id, 1 if store_id else 0, now),
         )
-        store = None
-        if store_id:
-            row = self._db.execute(
-                "SELECT lat, lng, probe_count FROM stores WHERE id = ?", (store_id,)
-            ).fetchone()
-            if row:
-                # Running centroid of all probe points that hit this store
-                # approximates the store's real location.
-                olat, olng, n = row
-                nlat, nlng = (olat * n + lat) / (n + 1), (olng * n + lng) / (n + 1)
-                self._db.execute(
-                    "UPDATE stores SET lat=?, lng=?, probe_count=?, last_seen_at=?, "
-                    "name=COALESCE(?, name), city=COALESCE(?, city) WHERE id=?",
-                    (nlat, nlng, n + 1, now, store_name, city, store_id),
-                )
-                store = Store(store_id, store_name, city, nlat, nlng)
-            else:
-                self._db.execute(
-                    "INSERT INTO stores (id, name, city, lat, lng, probe_count, discovered_at, last_seen_at) "
-                    "VALUES (?, ?, ?, ?, ?, 1, ?, ?)",
-                    (store_id, store_name, city, lat, lng, now, now),
-                )
-                store = Store(store_id, store_name, city, lat, lng)
+        store = self._upsert_store(lat, lng, store_id, store_name, city, now) if store_id else None
+        self._db.commit()
+        return store
+
+    def record_store(
+        self,
+        lat: float,
+        lng: float,
+        store_id: str | None,
+        store_name: str | None = None,
+        city: str | None = None,
+    ) -> Store | None:
+        """Remember a store seen near (lat, lng) WITHOUT recording a probe point.
+
+        Used for the secondary/fulfilment store named alongside a probe's primary:
+        it's a real store worth checking and mapping, but the point's coverage is
+        already accounted for by the primary's record_probe.
+        """
+        if not store_id:
+            return None
+        now = self._now()
+        store = self._upsert_store(lat, lng, store_id, store_name, city, now)
         self._db.commit()
         return store
 

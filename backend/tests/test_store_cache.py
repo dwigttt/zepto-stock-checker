@@ -29,3 +29,20 @@ def test_fresh_probe_coverage():
     assert cache.has_fresh_probe_near(12.97, 77.59, 2.0)
     assert cache.has_fresh_probe_near(12.975, 77.59, 2.0)  # ~0.5km away
     assert not cache.has_fresh_probe_near(13.1, 77.59, 2.0)  # ~14km away
+
+
+def test_record_store_adds_store_without_marking_coverage():
+    """A secondary store seen alongside a probe is a real store to remember, but
+    it must NOT count as having probed that point (the point's primary did)."""
+    cache = make_cache()
+    store = cache.record_store(12.97, 77.59, "sec-1", "BLR-SEC", "Bengaluru")
+    assert store.id == "sec-1"
+    assert [s.id for s in cache.stores_within(12.97, 77.59, 5)] == ["sec-1"]
+    # record_store does not write a probed_points row
+    assert not cache.has_fresh_probe_near(12.97, 77.59, 2.0)
+    assert cache.stats()["probes"] == 0
+
+
+def test_record_store_ignores_missing_id():
+    cache = make_cache()
+    assert cache.record_store(12.97, 77.59, None) is None

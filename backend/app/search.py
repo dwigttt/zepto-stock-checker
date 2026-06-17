@@ -78,23 +78,42 @@ async def run_search(
         # search area even if its (approximate) centroid lands slightly outside.
         if store:
             start_check(store)
+        # The secondary store Zepto also fulfils this point from may stock items
+        # the primary doesn't. Remember it at the probe point (its real location
+        # is unknown) and check it too. start_check dedups across the sweep.
+        if res.secondary_store_id:
+            secondary = cache.record_store(plat, plng, res.secondary_store_id)
+            if secondary:
+                start_check(secondary)
 
     async def main_flow() -> None:
         try:
             # 1. The user's own location.
             home = await client.resolve_store(lat, lng)
             home_product = None
+            home_eta = home.eta_minutes
             if home.serviceable and home.store_id:
                 checked.add(home.store_id)
                 cache.record_probe(lat, lng, home.store_id, home.store_name, home.city)
                 home_product = await client.product_at_store(pvid, home.store_id)
+                # Zepto fulfils an address from a secondary store too; a product
+                # OOS/not-carried at the primary can be in stock there (longer
+                # eta). Check it so we don't report a deliverable item as OOS.
+                if home.secondary_store_id and (
+                    home_product is None or home_product.status != "in_stock"
+                ):
+                    checked.add(home.secondary_store_id)
+                    alt = await client.product_at_store(pvid, home.secondary_store_id)
+                    if alt.status == "in_stock":
+                        home_product = alt
+                        home_eta = home.secondary_eta_minutes
             await emit(
                 {
                     "type": "home_result",
                     "serviceable": home.serviceable,
                     "city": home.city,
                     "store_name": home.store_name,
-                    "eta_minutes": home.eta_minutes,
+                    "eta_minutes": home_eta,
                     "product": asdict(home_product) if home_product else None,
                 }
             )

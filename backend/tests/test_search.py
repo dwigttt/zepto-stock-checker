@@ -66,3 +66,81 @@ async def test_no_budget_means_full_sweep():
     events = await collect(run_search(client, cache, PVID, 12.97, 77.59, 10))
     assert client.resolve_calls > 4  # many probes, unbounded
     assert not any(e["type"] == "notice" for e in events)
+
+
+class SecondaryStoreClient:
+    """Home location has a primary store (OOS) and a secondary store that Zepto
+    will also fulfil from — and the product is in stock there."""
+
+    PRIMARY = "11111111-1111-1111-1111-111111111111"
+    SECONDARY = "22222222-2222-2222-2222-222222222222"
+
+    async def resolve_store(self, lat, lng):
+        return StoreResolution(
+            serviceable=True,
+            store_id=self.PRIMARY,
+            store_name="Primary",
+            city="City",
+            eta_minutes=9,
+            secondary_store_id=self.SECONDARY,
+            secondary_eta_minutes=27,
+        )
+
+    async def product_at_store(self, pvid, store_id):
+        if store_id == self.SECONDARY:
+            return ProductAtStore(status="in_stock", price=993.0, available_quantity=2)
+        return ProductAtStore(status="out_of_stock", available_quantity=0)
+
+
+async def test_secondary_store_stock_is_reported_at_home():
+    """The user's bug: product is OOS at the primary store but in stock at the
+    secondary store Zepto serves the same address from — must report in stock."""
+    client = SecondaryStoreClient()
+    cache = StoreCache(":memory:")
+    events = await collect(run_search(client, cache, PVID, 19.42, 72.82, 5))
+    home = next(e for e in events if e["type"] == "home_result")
+    assert home["product"]["status"] == "in_stock"
+    assert home["eta_minutes"] == 27  # reflects the store that actually has it
+
+
+class SweepSecondaryClient:
+    """Home has no stock (so the sweep runs). Across the swept area, every
+    probe point's PRIMARY store is OOS, but they all share one SECONDARY store
+    that stocks the item — so the sweep must surface it."""
+
+    HOME = (12.97, 77.59)
+    SWEEP_SECONDARY = "sweep-secondary"
+
+    def __init__(self):
+        self.product_calls = 0
+
+    async def resolve_store(self, lat, lng):
+        if (round(lat, 4), round(lng, 4)) == self.HOME:
+            # Home: primary OOS, no secondary -> not available at home.
+            return StoreResolution(
+                serviceable=True, store_id="home-primary", store_name="Home",
+                city="City", eta_minutes=5,
+            )
+        return StoreResolution(
+            serviceable=True, store_id=f"p-{lat:.3f}-{lng:.3f}", store_name="P",
+            city="City", eta_minutes=10,
+            secondary_store_id=self.SWEEP_SECONDARY, secondary_eta_minutes=30,
+        )
+
+    async def product_at_store(self, pvid, store_id):
+        self.product_calls += 1
+        if store_id == self.SWEEP_SECONDARY:
+            return ProductAtStore(status="in_stock", price=100.0, available_quantity=1)
+        return ProductAtStore(status="out_of_stock")
+
+
+async def test_sweep_checks_secondary_stores():
+    """Deferred 'full coverage': a store that only appears as the SECONDARY for
+    swept points must still be discovered, checked once (deduped), and reported
+    in stock."""
+    client = SweepSecondaryClient()
+    cache = StoreCache(":memory:")
+    events = await collect(run_search(client, cache, PVID, 12.97, 77.59, 6))
+    in_stock = [e for e in events if e["type"] == "store_result" and e["status"] == "in_stock"]
+    assert len(in_stock) == 1  # the shared secondary, checked exactly once
+    assert in_stock[0]["store"]["id"] == SweepSecondaryClient.SWEEP_SECONDARY
