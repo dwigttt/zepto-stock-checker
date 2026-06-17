@@ -27,6 +27,11 @@ finishes in seconds.
 
 ## Development
 
+> **New here?** For a beginner-friendly, OS-by-OS walkthrough that installs
+> everything from scratch (Linux / macOS / Windows), see
+> **[docs/RUNNING.md](docs/RUNNING.md)**. On Mac/Linux the short version is just
+> `./dev.sh`.
+
 ```bash
 # Terminal 1 — backend on :8400
 cd backend
