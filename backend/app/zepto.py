@@ -155,9 +155,19 @@ class ZeptoClient:
             if not force and time.monotonic() - self._handshake_at < HANDSHAKE_MAX_AGE_S:
                 return
             # HEAD issues the same session cookies as GET without downloading the
-            # ~125 KB homepage body — the handshake only needs the set-cookies.
+            # ~125 KB homepage body. Some edges/WAFs reject a cold HEAD, so fall
+            # back to a (browser-like) GET before giving up.
             resp = await self._client.request("HEAD", WEB_BASE + "/", headers={"Accept": "text/html"})
-            resp.raise_for_status()
+            if resp.status_code != 200:
+                resp = await self._client.get(WEB_BASE + "/", headers={"Accept": "text/html"})
+            # A blocked proxy IP answers 403/429 here. Raise ZeptoError (not a raw
+            # httpx error) so callers' `except ZeptoError` degrades gracefully
+            # instead of bubbling up as a 500.
+            if resp.status_code != 200:
+                raise ZeptoError(
+                    f"handshake blocked: HTTP {resp.status_code} — the proxy IP is likely "
+                    "flagged by Zepto (try a sticky residential session)"
+                )
             if not self._client.cookies.get("session_id"):
                 raise ZeptoError("handshake did not issue session cookies")
             self._handshake_at = time.monotonic()

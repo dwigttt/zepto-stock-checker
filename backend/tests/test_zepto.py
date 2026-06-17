@@ -10,8 +10,9 @@ import json
 from urllib.parse import quote
 
 import httpx
+import pytest
 
-from app.zepto import ZeptoClient, _parse_product_detail, _parse_serviceability
+from app.zepto import ZeptoClient, ZeptoError, _parse_product_detail, _parse_serviceability
 
 
 def _serviceability_cookie(payload: dict) -> str:
@@ -154,6 +155,38 @@ async def test_resolve_share_link_uses_head_when_pvid_in_url():
     assert pvid == PVID
     product_methods = [m for (m, p) in calls if p != "/"]
     assert product_methods == ["HEAD"]  # body never fetched
+
+
+async def test_handshake_blocked_raises_zepto_error_not_raw_httpx():
+    """A blocked proxy IP (403) must surface as ZeptoError so callers' existing
+    `except ZeptoError` handling degrades gracefully instead of a raw 500."""
+    def handler(request):
+        return httpx.Response(403)
+
+    client = ZeptoClient(transport=httpx.MockTransport(handler))
+    try:
+        with pytest.raises(ZeptoError):
+            await client._ensure_session(force=True)
+    finally:
+        await client.aclose()
+
+
+async def test_handshake_falls_back_to_get_when_head_rejected():
+    """If a cold HEAD is rejected (some WAFs/edges do) but GET works, recover."""
+    methods = []
+
+    def handler(request):
+        methods.append(request.method)
+        if request.method == "HEAD":
+            return httpx.Response(403)
+        return httpx.Response(200, headers={"set-cookie": "session_id=ok; Path=/"})
+
+    client = ZeptoClient(transport=httpx.MockTransport(handler))
+    try:
+        await client._ensure_session(force=True)  # must not raise
+    finally:
+        await client.aclose()
+    assert methods == ["HEAD", "GET"]
 
 
 async def test_resolve_share_link_falls_back_to_body():
