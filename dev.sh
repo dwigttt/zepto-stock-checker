@@ -5,6 +5,15 @@ cd "$(dirname "$0")"
 
 trap 'kill 0' EXIT INT TERM
 
+# Load local secrets (e.g. PROXY_URL) from a gitignored .env, if present.
+# See .env.example. Credentials stay out of git and off the terminal.
+if [ -f .env ]; then
+  set -a
+  . ./.env
+  set +a
+  [ -n "$PROXY_URL" ] && echo "==> PROXY_URL set — routing Zepto calls through the proxy"
+fi
+
 echo "==> Backend deps"
 (cd backend && uv sync --quiet)
 echo "==> Frontend deps"

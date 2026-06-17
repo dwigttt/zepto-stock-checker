@@ -4,6 +4,7 @@ Run whenever Zepto seems broken:  cd backend && uv run python scripts/smoke_zept
 """
 
 import asyncio
+import os
 import sys
 from pathlib import Path
 
@@ -16,7 +17,11 @@ TEST_LINK = "https://www.zepto.com/pn/amul-rabri-cup/pvid/579bf27b-6d7a-4aa8-83d
 
 
 async def main() -> int:
-    client = ZeptoClient()
+    # Honour PROXY_URL so this doubles as a proxy check (non-Indian IPs are
+    # geofenced; route through PROXY_URL to confirm it reaches Zepto).
+    proxy = os.environ.get("PROXY_URL") or None
+    print(f"proxy: {'on' if proxy else 'off (direct)'}")
+    client = ZeptoClient(proxy)
     failures = 0
     try:
         geo = await client.geocode(TEST_PINCODE)
